@@ -14,11 +14,19 @@ A Vite development server is **already running** on `$PORT` (default 8443). You 
 This is the canonical project structure. Start with task-relevant files below. Only follow imports or inspect other files when required, when a documented path is missing, or when the repository contradicts this guide.
 
 - `src/main.tsx` - React entrypoint; imports `src/index.css` and mounts `src/App.tsx` into the `#root` element
-- `src/App.tsx` - Primary application component and the usual starting point for UI work
+- `src/App.tsx` - Thin application shell that renders `WorkplaceUI`
 - `src/index.css` - Global CSS entrypoint and Tailwind CSS v4 import
+- `src/theme.ts` - Shared design tokens (colors, fonts) used across feature modules
+- `src/types.ts` - Shared TypeScript types and project data constants
+- `llm-communicator/` - LLM dialog panel component
+- `projects-browser/` - Project browser / sidebar component
+- `ui-kit/` - Visual UI constructor component and its helpers
+- `ui-viewer/` - Live preview panel component
+- `workplace-ui/` - Main workspace shell component (top bar, settings, layout)
 - `index.html` - Vite HTML shell containing the `#root` element and loading `src/main.tsx`
 - `package.json` - Project dependencies and the Vite build, development, preview, and formatting scripts
 - `vite.config.ts` - Vite configuration with React, Tailwind CSS v4, and Figma Make plugins plus the `@` alias for `src`
+- `tsconfig.json` - Includes `src` plus the top-level feature module folders
 - `.mise.toml` - Toolchain versions for Node.js and pnpm
 
 ## Dependencies

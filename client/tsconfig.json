@@ -19,5 +19,5 @@
     "strict": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "llm-communicator", "projects-browser", "ui-kit", "ui-viewer", "workplace-ui", "vite.config.ts"]
 }
