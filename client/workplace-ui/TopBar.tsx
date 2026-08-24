@@ -6,16 +6,20 @@ export default function TopBar({
   activeFile,
   runState,
   settingsOpen,
+  previewOpen,
   onCheck,
   onRun,
   onSettings,
+  onPreviewToggle,
 }: {
   activeFile: string
   runState: RunState
   settingsOpen: boolean
+  previewOpen: boolean
   onCheck: () => void
   onRun: () => void
   onSettings: () => void
+  onPreviewToggle: () => void
 }) {
   return (
     <div
@@ -68,6 +72,14 @@ export default function TopBar({
           accent
           active={runState === "running"}
           onClick={onRun}
+        />
+        <div
+          style={{ width: 1, height: 18, background: C.b2, margin: "0 2px" }}
+        />
+        <TbBtn
+          label={previewOpen ? "Превью" : "Превью"}
+          active={previewOpen}
+          onClick={onPreviewToggle}
         />
         <div
           style={{ width: 1, height: 18, background: C.b2, margin: "0 2px" }}

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, type ChangeEvent } from "react"
 import { C } from "@/theme"
 import {
   PALETTE_GROUPS,
@@ -6,12 +6,115 @@ import {
   SNAP,
   snapTo,
   AB,
+  defaultProps,
+  effectiveProps,
   type Point,
   type PlacedComp,
   type DragCtx,
+  type CompProps,
 } from "./constants"
 import CompPreview from "./CompPreview"
 import PropRow from "./PropRow"
+
+const inputStyle = {
+  width: 60,
+  background: C.s2,
+  border: `1px solid ${C.b2}`,
+  borderRadius: 2,
+  padding: "3px 6px",
+  fontSize: 11,
+  fontFamily: C.mono,
+  color: C.t1,
+  outline: "none",
+}
+
+const colorSwatchStyle = {
+  width: 18,
+  height: 18,
+  border: `1px solid ${C.b2}`,
+  borderRadius: 2,
+  padding: 0,
+  background: "transparent",
+  cursor: "pointer",
+}
+
+function PropInputRow({
+  label,
+  value,
+  type = "text",
+  onChange,
+}: {
+  label: string
+  value: string | number
+  type?: "text" | "number"
+  onChange: (value: string) => void
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "4px 12px",
+        borderBottom: `1px solid ${C.b1}`,
+        fontSize: 11,
+        fontFamily: C.mono,
+      }}
+    >
+      <span style={{ color: C.t2 }}>{label}</span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
+        style={inputStyle}
+      />
+    </div>
+  )
+}
+
+function PropColorRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "4px 12px",
+        borderBottom: `1px solid ${C.b1}`,
+        fontSize: 11,
+        fontFamily: C.mono,
+      }}
+    >
+      <span style={{ color: C.t2 }}>{label}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <input
+          type="color"
+          value={value}
+          onChange={(e: ChangeEvent<HTMLInputElement>) =>
+            onChange(e.target.value)
+          }
+          style={colorSwatchStyle}
+        />
+        <input
+          type="text"
+          value={value}
+          onChange={(e: ChangeEvent<HTMLInputElement>) =>
+            onChange(e.target.value)
+          }
+          style={{ ...inputStyle, width: 72 }}
+        />
+      </div>
+    </div>
+  )
+}
 
 export default function VisualConstructor() {
   const [paletteSel, setPaletteSel] = useState<string | null>(null)
@@ -24,6 +127,16 @@ export default function VisualConstructor() {
 
   const selSet = new Set(selIds)
   const firstSel = placed.find((p) => selIds[0] === p.id) ?? null
+
+  function updateProp<K extends keyof PlacedComp>(
+    id: string,
+    key: K,
+    value: PlacedComp[K],
+  ) {
+    setPlaced((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, [key]: value } : c)),
+    )
+  }
 
   function canvasCoords(e: React.MouseEvent): Point {
     const rect = canvasRef.current!.getBoundingClientRect()
@@ -43,13 +156,24 @@ export default function VisualConstructor() {
     if (!paletteSel) return
     e.stopPropagation()
     const { x, y } = canvasCoords(e)
-    const meta = COMP_META[paletteSel] ?? { w: 120, h: 40 }
-    const cx = snapTo(x - meta.w / 2)
-    const cy = snapTo(y - meta.h / 2)
+    const props = defaultProps(paletteSel)
+    const cx = snapTo(x - props.w / 2)
+    const cy = snapTo(y - props.h / 2)
     const id = `${paletteSel}-${++uidRef.current}`
     setPlaced((p) => [
       ...p,
-      { id, type: paletteSel, x: Math.max(0, cx), y: Math.max(0, cy) },
+      {
+        id,
+        type: paletteSel,
+        x: Math.max(0, cx),
+        y: Math.max(0, cy),
+        w: props.w,
+        h: props.h,
+        color: props.color,
+        bg: props.bg,
+        radius: props.radius,
+        text: props.text,
+      },
     ])
     setSelIds([id])
   }
@@ -114,9 +238,9 @@ export default function VisualConstructor() {
       const rx1 = Math.max(drag.x0, drag.x1)
       const ry1 = Math.max(drag.y0, drag.y1)
       const hit = placed.filter((c) => {
-        const meta = COMP_META[c.type] ?? { w: 80, h: 40 }
+        const props = effectiveProps(c)
         return (
-          c.x < rx1 && c.x + meta.w > rx0 && c.y < ry1 && c.y + meta.h > ry0
+          c.x < rx1 && c.x + props.w > rx0 && c.y < ry1 && c.y + props.h > ry0
         )
       })
       setSelIds(hit.map((c) => c.id))
@@ -385,7 +509,7 @@ export default function VisualConstructor() {
 
           {/* Placed components */}
           {placed.map((comp) => {
-            const meta = COMP_META[comp.type] ?? { w: 120, h: 40, color: C.t2 }
+            const props = effectiveProps(comp)
             const isSel = selSet.has(comp.id)
             return (
               <div
@@ -395,8 +519,11 @@ export default function VisualConstructor() {
                   position: "absolute",
                   left: comp.x,
                   top: comp.y,
-                  width: meta.w,
-                  height: meta.h,
+                  width: props.w,
+                  height: props.h,
+                  background: props.bg,
+                  borderRadius: props.radius,
+                  overflow: "hidden",
                   cursor: drag?.kind === "move" && isSel ? "grabbing" : "grab",
                   boxShadow: isSel
                     ? `0 0 0 2px ${C.acc}, 0 4px 16px rgba(0,0,0,.4)`
@@ -404,7 +531,7 @@ export default function VisualConstructor() {
                   zIndex: isSel ? 5 : 2,
                 }}
               >
-                <CompPreview type={comp.type} />
+                <CompPreview type={comp.type} props={comp} />
                 {isSel && (
                   <>
                     <div
@@ -421,7 +548,7 @@ export default function VisualConstructor() {
                         pointerEvents: "none",
                       }}
                     >
-                      {comp.type} · {comp.x},{comp.y}
+                      {comp.type} · {comp.x},{comp.y} · {props.w}×{props.h}
                     </div>
                     {[
                       [-3, -3],
@@ -491,15 +618,65 @@ export default function VisualConstructor() {
         ) : firstSel ? (
           <>
             <PropRow label="type" value={firstSel.type} />
-            <PropRow label="x" value={`${firstSel.x}px`} />
-            <PropRow label="y" value={`${firstSel.y}px`} />
-            <PropRow
-              label="width"
-              value={`${COMP_META[firstSel.type]?.w ?? "—"}px`}
+            <PropInputRow
+              label="x"
+              type="number"
+              value={firstSel.x}
+              onChange={(v) => {
+                const n = parseInt(v, 10)
+                updateProp(firstSel.id, "x", isNaN(n) ? 0 : Math.max(0, n))
+              }}
             />
-            <PropRow
+            <PropInputRow
+              label="y"
+              type="number"
+              value={firstSel.y}
+              onChange={(v) => {
+                const n = parseInt(v, 10)
+                updateProp(firstSel.id, "y", isNaN(n) ? 0 : Math.max(0, n))
+              }}
+            />
+            <PropInputRow
+              label="width"
+              type="number"
+              value={firstSel.w ?? ""}
+              onChange={(v) => {
+                const n = parseInt(v, 10)
+                updateProp(firstSel.id, "w", isNaN(n) ? undefined : Math.max(20, n))
+              }}
+            />
+            <PropInputRow
               label="height"
-              value={`${COMP_META[firstSel.type]?.h ?? "—"}px`}
+              type="number"
+              value={firstSel.h ?? ""}
+              onChange={(v) => {
+                const n = parseInt(v, 10)
+                updateProp(firstSel.id, "h", isNaN(n) ? undefined : Math.max(20, n))
+              }}
+            />
+            <PropColorRow
+              label="color"
+              value={firstSel.color ?? effectiveProps(firstSel).color}
+              onChange={(v) => updateProp(firstSel.id, "color", v)}
+            />
+            <PropColorRow
+              label="bg"
+              value={firstSel.bg ?? effectiveProps(firstSel).bg}
+              onChange={(v) => updateProp(firstSel.id, "bg", v)}
+            />
+            <PropInputRow
+              label="radius"
+              type="number"
+              value={firstSel.radius ?? ""}
+              onChange={(v) => {
+                const n = parseInt(v, 10)
+                updateProp(firstSel.id, "radius", isNaN(n) ? undefined : Math.max(0, n))
+              }}
+            />
+            <PropInputRow
+              label="text"
+              value={firstSel.text ?? ""}
+              onChange={(v) => updateProp(firstSel.id, "text", v)}
             />
           </>
         ) : paletteSel ? (
@@ -507,12 +684,14 @@ export default function VisualConstructor() {
             <PropRow label="type" value={paletteSel} />
             <PropRow
               label="width"
-              value={`${COMP_META[paletteSel]?.w ?? "—"}px`}
+              value={`${defaultProps(paletteSel).w}px`}
             />
             <PropRow
               label="height"
-              value={`${COMP_META[paletteSel]?.h ?? "—"}px`}
+              value={`${defaultProps(paletteSel).h}px`}
             />
+            <PropRow label="color" value={defaultProps(paletteSel).color} />
+            <PropRow label="bg" value={defaultProps(paletteSel).bg} />
             <div
               style={{
                 padding: "8px 12px",

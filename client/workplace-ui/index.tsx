@@ -14,6 +14,7 @@ export default function WorkplaceUI() {
   const [runState, setRunState] = useState<RunState>("idle")
   const [toast, setToast] = useState<Toast>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(true)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function showToast(t: Toast) {
@@ -69,9 +70,11 @@ export default function WorkplaceUI() {
         activeFile={activeFile}
         runState={runState}
         settingsOpen={settingsOpen}
+        previewOpen={previewOpen}
         onCheck={handleCheck}
         onRun={handleRun}
         onSettings={() => setSettingsOpen((o) => !o)}
+        onPreviewToggle={() => setPreviewOpen((o) => !o)}
       />
       <Sidebar selected={activeFile} onSelect={setActiveFile} />
 
@@ -124,7 +127,7 @@ export default function WorkplaceUI() {
           <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
             <VisualConstructor />
           </div>
-          <PreviewPanel />
+          {previewOpen && <PreviewPanel />}
         </div>
       </div>
 

@@ -18,7 +18,16 @@ export interface Point {
   y: number
 }
 
-export interface PlacedComp {
+export interface CompProps {
+  w?: number
+  h?: number
+  color?: string
+  bg?: string
+  radius?: number
+  text?: string
+}
+
+export interface PlacedComp extends CompProps {
   id: string
   type: string
   x: number
@@ -29,34 +38,65 @@ export interface CompMeta {
   w: number
   h: number
   color: string
+  bg?: string
+  radius?: number
+  text?: string
 }
 
 export const COMP_META: Record<string, CompMeta> = {
-  Container: { w: 240, h: 140, color: C.t3 },
-  Row: { w: 240, h: 48, color: C.t3 },
-  Column: { w: 100, h: 200, color: C.t3 },
-  Divider: { w: 240, h: 20, color: C.t3 },
-  Spacer: { w: 120, h: 48, color: C.t3 },
-  TextField: { w: 220, h: 40, color: C.acc },
-  Select: { w: 180, h: 36, color: C.acc },
-  Toggle: { w: 64, h: 32, color: C.acc },
-  Slider: { w: 220, h: 36, color: C.acc },
-  Button: { w: 120, h: 36, color: C.acc },
-  Text: { w: 200, h: 28, color: C.t2 },
-  Avatar: { w: 48, h: 48, color: C.pur },
-  Badge: { w: 72, h: 24, color: C.pur },
-  Progress: { w: 220, h: 20, color: C.pur },
-  Card: { w: 240, h: 160, color: C.t2 },
-  Bubble: { w: 220, h: 56, color: C.grn },
-  Typing: { w: 80, h: 36, color: C.grn },
-  QuickReply: { w: 180, h: 36, color: C.grn },
-  Prompt: { w: 280, h: 48, color: C.grn },
+  // Layout
+  Container: { w: 240, h: 140, color: C.t3, bg: "transparent", radius: 0 },
+  Row: { w: 240, h: 48, color: C.t3, bg: "transparent", radius: 0 },
+  Column: { w: 100, h: 200, color: C.t3, bg: "transparent", radius: 0 },
+  Divider: { w: 240, h: 20, color: C.b2, bg: "transparent", radius: 0 },
+  Spacer: { w: 120, h: 48, color: C.t3, bg: "transparent", radius: 0 },
+  // Input
+  TextField: { w: 220, h: 40, color: C.t3, bg: C.s2, radius: 2, text: "Введите текст..." },
+  Select: { w: 180, h: 36, color: C.t3, bg: C.s2, radius: 2, text: "Выбрать..." },
+  Toggle: { w: 64, h: 32, color: "#fff", bg: C.acc, radius: 10 },
+  Slider: { w: 220, h: 36, color: C.acc, bg: C.b2, radius: 2 },
+  Button: { w: 120, h: 36, color: "#fff", bg: C.acc, radius: 2, text: "Кнопка" },
+  // Display
+  Text: { w: 200, h: 28, color: C.t1, bg: "transparent", radius: 0, text: "Текстовый элемент" },
+  Avatar: { w: 48, h: 48, color: C.acc, bg: C.accA, radius: 0 },
+  Badge: { w: 72, h: 24, color: C.pur, bg: `${C.pur}22`, radius: 10, text: "badge" },
+  Progress: { w: 220, h: 20, color: C.pur, bg: C.b2, radius: 2 },
+  Card: { w: 240, h: 160, color: C.t2, bg: C.s2, radius: 4 },
+  // Dialog
+  Bubble: { w: 220, h: 56, color: C.t1, bg: C.s2, radius: 2, text: "Сообщение ассистента..." },
+  Typing: { w: 80, h: 36, color: C.t2, bg: C.s2, radius: 2 },
+  QuickReply: { w: 180, h: 36, color: C.t1, bg: C.s2, radius: 2 },
+  Prompt: { w: 280, h: 48, color: C.acc, bg: C.s2, radius: 2, text: "Задайте вопрос..." },
 }
 
 export const SNAP = 20
 
 export function snapTo(v: number) {
   return Math.round(v / SNAP) * SNAP
+}
+
+export function defaultProps(type: string): Required<CompProps> {
+  const meta = COMP_META[type] ?? { w: 120, h: 40, color: C.t2 }
+  return {
+    w: meta.w,
+    h: meta.h,
+    color: meta.color,
+    bg: meta.bg ?? "transparent",
+    radius: meta.radius ?? 0,
+    text: meta.text ?? "",
+  }
+}
+
+export function effectiveProps(comp: PlacedComp): Required<CompProps> {
+  const defaults = defaultProps(comp.type)
+  return {
+    w: comp.w ?? defaults.w,
+    h: comp.h ?? defaults.h,
+    color: comp.color ?? defaults.color,
+    bg: comp.bg ?? defaults.bg,
+    radius: comp.radius ?? defaults.radius,
+    text: comp.text ?? defaults.text,
+  }
 }
 
 export const AB = { x: 160, y: 80, w: 390, h: 720 }

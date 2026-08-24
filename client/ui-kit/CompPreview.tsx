@@ -1,8 +1,15 @@
 import { C } from "@/theme"
-import { COMP_META } from "./constants"
+import { defaultProps, type CompProps } from "./constants"
 
-export default function CompPreview({ type }: { type: string }) {
-  const color = COMP_META[type]?.color ?? C.t2
+export default function CompPreview({
+  type,
+  props,
+}: {
+  type: string
+  props?: CompProps
+}) {
+  const p = { ...defaultProps(type), ...props }
+  const { color, bg, radius, text } = p
 
   switch (type) {
     case "Container":
@@ -11,7 +18,9 @@ export default function CompPreview({ type }: { type: string }) {
           style={{
             width: "100%",
             height: "100%",
+            background: bg,
             border: `1px dashed ${color}`,
+            borderRadius: radius,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -28,7 +37,9 @@ export default function CompPreview({ type }: { type: string }) {
           style={{
             width: "100%",
             height: "100%",
+            background: bg,
             border: `1px dashed ${color}`,
+            borderRadius: radius,
             display: "flex",
             alignItems: "center",
             gap: 6,
@@ -54,7 +65,9 @@ export default function CompPreview({ type }: { type: string }) {
           style={{
             width: "100%",
             height: "100%",
+            background: bg,
             border: `1px dashed ${color}`,
+            borderRadius: radius,
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -85,7 +98,7 @@ export default function CompPreview({ type }: { type: string }) {
             alignItems: "center",
           }}
         >
-          <div style={{ flex: 1, height: 1, background: C.b2 }} />
+          <div style={{ flex: 1, height: 1, background: color }} />
         </div>
       )
     case "Spacer":
@@ -94,13 +107,15 @@ export default function CompPreview({ type }: { type: string }) {
           style={{
             width: "100%",
             height: "100%",
-            border: `1px dashed ${C.t3}`,
+            background: bg,
+            border: `1px dashed ${color}`,
+            borderRadius: radius,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
           }}
         >
-          <span style={{ fontSize: 9, fontFamily: C.mono, color: C.t3 }}>
+          <span style={{ fontSize: 9, fontFamily: C.mono, color }}>
             ↕ spacer
           </span>
         </div>
@@ -111,15 +126,16 @@ export default function CompPreview({ type }: { type: string }) {
           style={{
             width: "100%",
             height: "100%",
-            background: C.s2,
-            border: `1px solid ${C.b2}`,
+            background: bg,
+            border: `1px solid ${color}`,
+            borderRadius: radius,
             display: "flex",
             alignItems: "center",
             padding: "0 10px",
           }}
         >
-          <span style={{ fontSize: 11, color: C.t3, fontFamily: C.sans }}>
-            Введите текст...
+          <span style={{ fontSize: 11, color, fontFamily: C.sans }}>
+            {text}
           </span>
         </div>
       )
@@ -129,18 +145,19 @@ export default function CompPreview({ type }: { type: string }) {
           style={{
             width: "100%",
             height: "100%",
-            background: C.s2,
-            border: `1px solid ${C.b2}`,
+            background: bg,
+            border: `1px solid ${color}`,
+            borderRadius: radius,
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             padding: "0 10px",
           }}
         >
-          <span style={{ fontSize: 11, color: C.t3, fontFamily: C.sans }}>
-            Выбрать...
+          <span style={{ fontSize: 11, color, fontFamily: C.sans }}>
+            {text}
           </span>
-          <span style={{ fontSize: 9, color: C.t2 }}>▾</span>
+          <span style={{ fontSize: 9, color }}>▾</span>
         </div>
       )
     case "Toggle":
@@ -158,8 +175,8 @@ export default function CompPreview({ type }: { type: string }) {
             style={{
               width: 36,
               height: 20,
-              background: C.acc,
-              borderRadius: 10,
+              background: bg,
+              borderRadius: radius,
               position: "relative",
             }}
           >
@@ -171,7 +188,7 @@ export default function CompPreview({ type }: { type: string }) {
                 width: 16,
                 height: 16,
                 borderRadius: "50%",
-                background: "#fff",
+                background: color,
               }}
             />
           </div>
@@ -193,8 +210,8 @@ export default function CompPreview({ type }: { type: string }) {
             style={{
               flex: 1,
               height: 3,
-              background: C.b2,
-              borderRadius: 2,
+              background: bg,
+              borderRadius: radius,
               position: "relative",
             }}
           >
@@ -202,8 +219,8 @@ export default function CompPreview({ type }: { type: string }) {
               style={{
                 width: "60%",
                 height: "100%",
-                background: C.acc,
-                borderRadius: 2,
+                background: color,
+                borderRadius: radius,
               }}
             />
             <div
@@ -215,7 +232,7 @@ export default function CompPreview({ type }: { type: string }) {
                 width: 10,
                 height: 10,
                 borderRadius: "50%",
-                background: C.acc,
+                background: color,
               }}
             />
           </div>
@@ -227,7 +244,8 @@ export default function CompPreview({ type }: { type: string }) {
           style={{
             width: "100%",
             height: "100%",
-            background: C.acc,
+            background: bg,
+            borderRadius: radius,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -236,12 +254,12 @@ export default function CompPreview({ type }: { type: string }) {
           <span
             style={{
               fontSize: 12,
-              color: "#fff",
+              color,
               fontWeight: 500,
               fontFamily: C.sans,
             }}
           >
-            Кнопка
+            {text}
           </span>
         </div>
       )
@@ -255,8 +273,17 @@ export default function CompPreview({ type }: { type: string }) {
             alignItems: "center",
           }}
         >
-          <span style={{ fontSize: 12, color: C.t1, fontFamily: C.sans }}>
-            Текстовый элемент
+          <span
+            style={{
+              fontSize: 12,
+              color,
+              background: bg,
+              borderRadius: radius,
+              fontFamily: C.sans,
+              padding: bg && bg !== "transparent" ? "2px 6px" : 0,
+            }}
+          >
+            {text}
           </span>
         </div>
       )
@@ -276,15 +303,15 @@ export default function CompPreview({ type }: { type: string }) {
               width: 36,
               height: 36,
               borderRadius: "50%",
-              background: C.accA,
-              border: `1px solid ${C.accB}`,
+              background: bg,
+              border: `1px solid ${color}55`,
               display: "grid",
               placeItems: "center",
               fontSize: 12,
-              color: C.acc,
+              color,
             }}
           >
-            A
+            {text || "A"}
           </div>
         </div>
       )
@@ -301,16 +328,16 @@ export default function CompPreview({ type }: { type: string }) {
         >
           <div
             style={{
-              background: `${C.pur}22`,
-              border: `1px solid ${C.pur}55`,
-              borderRadius: 10,
+              background: bg,
+              border: `1px solid ${color}55`,
+              borderRadius: radius,
               padding: "2px 10px",
               fontSize: 10,
-              color: C.pur,
+              color,
               fontFamily: C.mono,
             }}
           >
-            badge
+            {text}
           </div>
         </div>
       )
@@ -326,14 +353,19 @@ export default function CompPreview({ type }: { type: string }) {
           }}
         >
           <div
-            style={{ flex: 1, height: 4, background: C.b2, borderRadius: 2 }}
+            style={{
+              flex: 1,
+              height: 4,
+              background: bg,
+              borderRadius: radius,
+            }}
           >
             <div
               style={{
                 width: "45%",
                 height: "100%",
-                background: C.pur,
-                borderRadius: 2,
+                background: color,
+                borderRadius: radius,
               }}
             />
           </div>
@@ -345,8 +377,9 @@ export default function CompPreview({ type }: { type: string }) {
           style={{
             width: "100%",
             height: "100%",
-            background: C.s2,
-            border: `1px solid ${C.b2}`,
+            background: bg,
+            border: `1px solid ${color}`,
+            borderRadius: radius,
             display: "flex",
             flexDirection: "column",
             padding: 12,
@@ -382,7 +415,7 @@ export default function CompPreview({ type }: { type: string }) {
               marginTop: "auto",
               width: 60,
               height: 24,
-              background: C.acc,
+              background: color,
               borderRadius: 2,
             }}
           />
@@ -401,16 +434,17 @@ export default function CompPreview({ type }: { type: string }) {
         >
           <div
             style={{
-              background: C.s2,
-              border: `1px solid ${C.b2}`,
+              background: bg,
+              border: `1px solid ${color}55`,
+              borderRadius: radius,
               padding: "6px 10px",
               fontSize: 11,
-              color: C.t1,
+              color,
               fontFamily: C.sans,
               maxWidth: "85%",
             }}
           >
-            Сообщение ассистента...
+            {text}
           </div>
         </div>
       )
@@ -429,8 +463,9 @@ export default function CompPreview({ type }: { type: string }) {
             style={{
               display: "flex",
               gap: 4,
-              background: C.s2,
-              border: `1px solid ${C.b2}`,
+              background: bg,
+              border: `1px solid ${color}55`,
+              borderRadius: radius,
               padding: "8px 12px",
             }}
           >
@@ -441,7 +476,7 @@ export default function CompPreview({ type }: { type: string }) {
                   width: 5,
                   height: 5,
                   borderRadius: "50%",
-                  background: C.t2,
+                  background: color,
                 }}
               />
             ))}
@@ -464,11 +499,12 @@ export default function CompPreview({ type }: { type: string }) {
             <div
               key={t}
               style={{
-                background: C.s2,
-                border: `1px solid ${C.b2}`,
+                background: bg,
+                border: `1px solid ${color}55`,
+                borderRadius: radius,
                 padding: "4px 10px",
                 fontSize: 10,
-                color: C.t1,
+                color,
                 fontFamily: C.sans,
               }}
             >
@@ -492,23 +528,25 @@ export default function CompPreview({ type }: { type: string }) {
           <div
             style={{
               flex: 1,
-              background: C.s2,
-              border: `1px solid ${C.b2}`,
+              background: bg,
+              border: `1px solid ${color}55`,
+              borderRadius: radius,
               height: 32,
               display: "flex",
               alignItems: "center",
               padding: "0 8px",
             }}
           >
-            <span style={{ fontSize: 11, color: C.t3, fontFamily: C.sans }}>
-              Задайте вопрос...
+            <span style={{ fontSize: 11, color, fontFamily: C.sans }}>
+              {text}
             </span>
           </div>
           <div
             style={{
               width: 32,
               height: 32,
-              background: C.acc,
+              background: color,
+              borderRadius: radius,
               display: "grid",
               placeItems: "center",
               fontSize: 13,
@@ -525,7 +563,9 @@ export default function CompPreview({ type }: { type: string }) {
           style={{
             width: "100%",
             height: "100%",
+            background: bg,
             border: `1px dashed ${color}`,
+            borderRadius: radius,
             display: "grid",
             placeItems: "center",
           }}
