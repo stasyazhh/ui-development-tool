@@ -1,3 +1,4 @@
+import json
 import psycopg2
 from typing import List, Dict, Optional
 from datetime import datetime
@@ -151,6 +152,42 @@ class ProjectsManager:
         finally:
             cursor.close()
     
+    def get_project_ui_state(self, project_id: int) -> Optional:
+        self._ensure_connection()
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute("""
+                SELECT ui_state FROM projects WHERE id = %s
+            """, (project_id,))
+            row = cursor.fetchone()
+            if row and row[0] is not None:
+                return row[0]
+            return None
+        finally:
+            cursor.close()
+    
+    def update_project_ui_state(self, project_id: int, ui_state) -> bool:
+        self._ensure_connection()
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute("""
+                UPDATE projects
+                SET ui_state = %s::jsonb
+                WHERE id = %s
+                RETURNING id
+            """, (json.dumps(ui_state), project_id))
+            updated = cursor.rowcount > 0
+            if updated:
+                self.connection.commit()
+            else:
+                self.connection.rollback()
+            return updated
+        except Exception as e:
+            self.connection.rollback()
+            raise e
+        finally:
+            cursor.close()
+    
     def delete_project(self, project_id: int) -> bool:
         self._ensure_connection()
         
@@ -170,6 +207,56 @@ class ProjectsManager:
         finally:
             cursor.close()
     
+    def record_ui_change(self, project_id: int, html_code: str, ui_state=None) -> Dict:
+        if not html_code or not html_code.strip():
+            raise ValueError("HTML-код не может быть пустым")
+        
+        self._ensure_connection()
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute("""
+                INSERT INTO project_ui_changes (project_id, html_code, ui_state)
+                VALUES (%s, %s, %s::jsonb)
+                RETURNING id, project_id, html_code, ui_state, created_at
+            """, (project_id, html_code.strip(), json.dumps(ui_state) if ui_state is not None else None))
+            row = cursor.fetchone()
+            self.connection.commit()
+            return {
+                'id': row[0],
+                'project_id': row[1],
+                'html_code': row[2],
+                'ui_state': row[3],
+                'created_at': row[4].isoformat(),
+            }
+        except Exception as e:
+            self.connection.rollback()
+            raise e
+        finally:
+            cursor.close()
+    
+    def get_ui_changes(self, project_id: int) -> List[Dict]:
+        self._ensure_connection()
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute("""
+                SELECT id, project_id, html_code, ui_state, created_at
+                FROM project_ui_changes
+                WHERE project_id = %s
+                ORDER BY created_at DESC
+            """, (project_id,))
+            rows = cursor.fetchall()
+            return [
+                {
+                    'id': row[0],
+                    'project_id': row[1],
+                    'html_code': row[2],
+                    'ui_state': row[3],
+                    'created_at': row[4].isoformat(),
+                }
+                for row in rows
+            ]
+        finally:
+            cursor.close()
     
     def get_project_files(self, project_id: int) -> List[Dict]:
         self._ensure_connection()

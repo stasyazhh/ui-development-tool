@@ -6,6 +6,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Any
 
 from projects_manager12.projects_manager import ProjectsManager
 
@@ -48,11 +49,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# ---------------------------------------------------------------------------
-# Pydantic schemas
-# ---------------------------------------------------------------------------
-
 class ProjectCreate(BaseModel):
     name: str
 
@@ -75,9 +71,14 @@ class FileUpdate(BaseModel):
     sort_order: Optional[int] = None
 
 
-# ---------------------------------------------------------------------------
-# Projects
-# ---------------------------------------------------------------------------
+class UIChangeCreate(BaseModel):
+    html_code: str
+    ui_state: Any = None
+
+
+class ProjectUIState(BaseModel):
+    ui_state: Any
+
 
 @app.get("/api/projects")
 def list_projects():
@@ -117,10 +118,6 @@ def delete_project(project_id: int):
         raise HTTPException(status_code=404, detail="Проект не найден")
     return {"ok": True}
 
-
-# ---------------------------------------------------------------------------
-# Files
-# ---------------------------------------------------------------------------
 
 @app.get("/api/projects/{project_id}/files")
 def list_files(project_id: int):
@@ -167,3 +164,50 @@ def delete_file(file_id: int):
     if not deleted:
         raise HTTPException(status_code=404, detail="Файл не найден")
     return {"ok": True}
+
+
+@app.get("/api/projects/{project_id}/ui-changes")
+def list_ui_changes(project_id: int):
+    project = manager.get_project_by_id(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Проект не найден")
+    return {"changes": manager.get_ui_changes(project_id)}
+
+
+@app.post("/api/projects/{project_id}/ui-changes")
+def create_ui_change(project_id: int, payload: UIChangeCreate):
+    project = manager.get_project_by_id(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Проект не найден")
+    try:
+        return manager.record_ui_change(
+            project_id,
+            payload.html_code,
+            payload.ui_state,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/projects/{project_id}/ui-state")
+def get_project_ui_state(project_id: int):
+    project = manager.get_project_by_id(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Проект не найден")
+    return {"ui_state": manager.get_project_ui_state(project_id)}
+
+
+@app.patch("/api/projects/{project_id}/ui-state")
+def update_project_ui_state(project_id: int, payload: ProjectUIState):
+    project = manager.get_project_by_id(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Проект не найден")
+    try:
+        updated = manager.update_project_ui_state(project_id, payload.ui_state)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Проект не найден")
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Ошибка сохранения ui_state: {e}")

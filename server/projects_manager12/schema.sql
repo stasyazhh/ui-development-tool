@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS projects (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS ui_state JSONB;
+
 CREATE INDEX IF NOT EXISTS idx_projects_name ON projects(name);
 
 CREATE TABLE IF NOT EXISTS file_nodes (
@@ -41,3 +43,15 @@ CREATE TRIGGER update_file_nodes_updated_at
     BEFORE UPDATE ON file_nodes
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE IF NOT EXISTS project_ui_changes (
+    id SERIAL PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    html_code TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE project_ui_changes ADD COLUMN IF NOT EXISTS ui_state JSONB;
+
+CREATE INDEX IF NOT EXISTS idx_project_ui_changes_project ON project_ui_changes(project_id);
+CREATE INDEX IF NOT EXISTS idx_project_ui_changes_created ON project_ui_changes(created_at DESC);
