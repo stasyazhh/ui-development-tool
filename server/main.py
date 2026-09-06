@@ -1,12 +1,18 @@
+import json
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
+import httpx
+from dotenv import load_dotenv
+
+load_dotenv()
+from dotenv import load_dotenv 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Any
 
 from projects_manager12.projects_manager import ProjectsManager
 
@@ -17,6 +23,12 @@ DB_CONFIG = {
     "user": os.getenv("DB_USER", "postgres"),
     "password": os.getenv("DB_PASSWORD", "password"),
 }
+
+load_dotenv()
+
+AI_BASE_URL = os.getenv("AI_BASE_URL", "https://opencode.ai/zen/go/v1/responses")
+AI_MODEL = os.getenv("AI_MODEL", "grok-4.6")
+AI_API_KEY = os.getenv("AI_API_KEY")
 
 manager = ProjectsManager(DB_CONFIG)
 
@@ -78,6 +90,15 @@ class UIChangeCreate(BaseModel):
 
 class ProjectUIState(BaseModel):
     ui_state: Any
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ChatRequest(BaseModel):
+    messages: list[ChatMessage]
 
 
 @app.get("/api/projects")
@@ -211,3 +232,57 @@ def update_project_ui_state(project_id: int, payload: ProjectUIState):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ошибка сохранения ui_state: {e}")
+
+
+async def _stream_chat(messages: list[dict[str, str]]):
+    if not AI_API_KEY:
+        raise HTTPException(status_code=500, detail="AI_API_KEY не настроен")
+
+    url = f"{AI_BASE_URL.rstrip('/')}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {AI_API_KEY}",
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+    }
+    body = {
+        "model": AI_MODEL,
+        "messages": messages,
+        "stream": True,
+    }
+
+    async def event_generator():
+        async with httpx.AsyncClient() as client:
+            async with client.stream(
+                "POST", url, headers=headers, json=body, timeout=120
+            ) as response:
+                if response.status_code != 200:
+                    error_msg = f"Ошибка сервера OpenCode: Статус {response.status_code}"
+                    yield f"data: {json.dumps({'error': error_msg})}\n\n"
+                    return
+                async for line in response.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data = line[6:]
+                    if data == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                        choices = chunk.get("choices", [])
+                        if choices and len(choices) > 0:
+                            delta = choices[0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                yield f"data: {json.dumps({'content': content})}\n\n"
+                    except json.JSONDecodeError:
+                        continue
+                yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_generator(), media_type="text/event-stream"
+    )
+
+
+@app.post("/api/chat")
+async def chat(payload: ChatRequest):
+    messages = [{"role": m.role, "content": m.content} for m in payload.messages]
+    return await _stream_chat(messages)
