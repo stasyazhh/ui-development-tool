@@ -1,20 +1,20 @@
 import json
 import os
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional
 
 import httpx
 from dotenv import load_dotenv
-
-load_dotenv()
-from dotenv import load_dotenv 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from projects_manager12.projects_manager import ProjectsManager
+
+load_dotenv()
 
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
@@ -24,10 +24,8 @@ DB_CONFIG = {
     "password": os.getenv("DB_PASSWORD", "password"),
 }
 
-load_dotenv()
-
-AI_BASE_URL = os.getenv("AI_BASE_URL", "https://opencode.ai/zen/go/v1/responses")
-AI_MODEL = os.getenv("AI_MODEL", "grok-4.6")
+AI_BASE_URL = os.getenv("AI_BASE_URL", "https://opencode.ai/zen/go/v1")
+AI_MODEL = os.getenv("AI_MODEL", "kimi-k2.7-code")
 AI_API_KEY = os.getenv("AI_API_KEY")
 
 manager = ProjectsManager(DB_CONFIG)
@@ -99,6 +97,45 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
+    session_id: Optional[str] = None
+
+
+class UIApplyRequest(BaseModel):
+    request: str
+    current_state: list[dict] = []
+    messages: list[ChatMessage] = []
+
+
+UI_COMPONENT_TYPES = [
+    "Container", "Row", "Column", "Divider", "Spacer",
+    "TextField", "Select", "Toggle", "Slider", "Button",
+    "Text", "Avatar", "Badge", "Progress", "Card",
+    "Bubble", "Typing", "QuickReply", "Prompt",
+]
+
+UI_SYSTEM_PROMPT = """Ты — ассистент визуального UI-конструктора. Пользователь редактирует мобильный интерфейс на темном фоне.
+
+Текущее состояние интерфейса передано в поле current_state. Запрос пользователя — в поле request.
+
+Твоя задача — понять запрос и вернуть строго JSON без пояснений вне блока кода.
+
+Формат ответа:
+{
+  "reply": "краткий текстовый ответ пользователю на русском языке",
+  "action": "replace",
+  "state": [
+    {"id": "Button-1", "type": "Button", "x": 200, "y": 200, "w": 120, "h": 36, "bg": "#3ecf8e", "color": "#ffffff", "radius": 2, "text": "Кнопка 1"}
+  ]
+}
+
+Правила:
+- action всегда "replace" — возвращаешь полное новое состояние интерфейса.
+- Если запрос не касается изменения интерфейса, верни action: "none" и пустой state: [].
+- Доступные type: Container, Row, Column, Divider, Spacer, TextField, Select, Toggle, Slider, Button, Text, Avatar, Badge, Progress, Card, Bubble, Typing, QuickReply, Prompt.
+- Координаты: канвас 2000x1600. Основная область (артборд) начинается в (160, 80) и имеет размер 390x720. Размещай компоненты внутри артборда, x и y — левый верхний угол.
+- w и h — ширина и высота. color — цвет текста/иконки. bg — цвет фона. radius — радиус скругления. text — текст на компоненте.
+- id должен быть уникальным, используй формат "<Type>-<номер>". Сохраняй id существующих компонентов, если они не удаляются.
+- Отвечай только JSON, без markdown-разметки вне JSON."""
 
 
 @app.get("/api/projects")
@@ -234,7 +271,7 @@ def update_project_ui_state(project_id: int, payload: ProjectUIState):
         raise HTTPException(status_code=500, detail=f"Ошибка сохранения ui_state: {e}")
 
 
-async def _stream_chat(messages: list[dict[str, str]]):
+async def _stream_chat(messages: list[dict[str, str]], session_id: Optional[str] = None):
     if not AI_API_KEY:
         raise HTTPException(status_code=500, detail="AI_API_KEY не настроен")
 
@@ -243,6 +280,8 @@ async def _stream_chat(messages: list[dict[str, str]]):
         "Authorization": f"Bearer {AI_API_KEY}",
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
+        "User-Agent": "ui-development-tool/1.0",
+        "x-opencode-session": session_id or str(uuid.uuid4()),
     }
     body = {
         "model": AI_MODEL,
@@ -251,38 +290,175 @@ async def _stream_chat(messages: list[dict[str, str]]):
     }
 
     async def event_generator():
-        async with httpx.AsyncClient() as client:
-            async with client.stream(
-                "POST", url, headers=headers, json=body, timeout=120
-            ) as response:
-                if response.status_code != 200:
-                    error_msg = f"Ошибка сервера OpenCode: Статус {response.status_code}"
-                    yield f"data: {json.dumps({'error': error_msg})}\n\n"
-                    return
-                async for line in response.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    data = line[6:]
-                    if data == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data)
-                        choices = chunk.get("choices", [])
-                        if choices and len(choices) > 0:
-                            delta = choices[0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                yield f"data: {json.dumps({'content': content})}\n\n"
-                    except json.JSONDecodeError:
-                        continue
-                yield "data: [DONE]\n\n"
+        try:
+            async with httpx.AsyncClient() as client:
+                async with client.stream(
+                    "POST", url, headers=headers, json=body, timeout=120
+                ) as response:
+                    if response.status_code != 200:
+                        error_text = ""
+                        try:
+                            error_text = await response.aread()
+                        except Exception:
+                            pass
+                        error_msg = f"Ошибка сервера OpenCode: Статус {response.status_code}"
+                        if error_text:
+                            error_msg += f" — {error_text.decode('utf-8', errors='replace')}"
+                        yield f"data: {json.dumps({'error': error_msg})}\n\n"
+                        return
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        data = line[6:]
+                        if data == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data)
+                            choices = chunk.get("choices", [])
+                            if choices and len(choices) > 0:
+                                delta = choices[0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    yield f"data: {json.dumps({'content': content})}\n\n"
+                        except json.JSONDecodeError:
+                            continue
+                    yield "data: [DONE]\n\n"
+        except httpx.HTTPError as exc:
+            error_msg = f"Не удалось подключиться к ИИ-серверу ({AI_BASE_URL}): {exc}"
+            yield f"data: {json.dumps({'error': error_msg})}\n\n"
+        except Exception as exc:
+            error_msg = f"Внутренняя ошибка при запросе к ИИ: {exc}"
+            yield f"data: {json.dumps({'error': error_msg})}\n\n"
 
     return StreamingResponse(
         event_generator(), media_type="text/event-stream"
     )
 
 
+def _extract_json(text: str) -> dict:
+    text = text.strip()
+    if text.startswith("{") and text.endswith("}"):
+        return json.loads(text)
+    start = text.find("```json")
+    if start != -1:
+        start += 7
+        end = text.find("```", start)
+        if end != -1:
+            return json.loads(text[start:end].strip())
+    start = text.find("```")
+    if start != -1:
+        start += 3
+        end = text.find("```", start)
+        if end != -1:
+            return json.loads(text[start:end].strip())
+    raise ValueError("JSON не найден в ответе")
+
+
+def _normalize_ui_state(state: Any) -> list[dict]:
+    if not isinstance(state, list):
+        return []
+    normalized = []
+    for item in state:
+        if not isinstance(item, dict):
+            continue
+        comp_type = item.get("type")
+        if comp_type not in UI_COMPONENT_TYPES:
+            continue
+        comp = {
+            "id": str(item.get("id") or f"{comp_type}-{len(normalized) + 1}"),
+            "type": comp_type,
+            "x": max(0, int(item.get("x", 0))),
+            "y": max(0, int(item.get("y", 0))),
+            "w": max(20, int(item.get("w", 120))),
+            "h": max(20, int(item.get("h", 40))),
+        }
+        if "color" in item:
+            comp["color"] = str(item["color"])
+        if "bg" in item:
+            comp["bg"] = str(item["bg"])
+        if "radius" in item:
+            comp["radius"] = max(0, int(item["radius"]))
+        if "text" in item:
+            comp["text"] = str(item["text"])
+        normalized.append(comp)
+    return normalized
+
+
+async def _call_llm(messages: list[dict[str, str]], session_id: Optional[str] = None) -> str:
+    if not AI_API_KEY:
+        raise HTTPException(status_code=500, detail="AI_API_KEY не настроен")
+
+    url = f"{AI_BASE_URL.rstrip('/')}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {AI_API_KEY}",
+        "Content-Type": "application/json",
+        "User-Agent": "ui-development-tool/1.0",
+        "x-opencode-session": session_id or str(uuid.uuid4()),
+    }
+    body = {
+        "model": AI_MODEL,
+        "messages": messages,
+        "stream": False,
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, headers=headers, json=body, timeout=120)
+        if response.status_code != 200:
+            error_text = response.text or ""
+            error_msg = f"Ошибка сервера OpenCode: Статус {response.status_code}"
+            if error_text:
+                error_msg += f" — {error_text}"
+            raise HTTPException(status_code=502, detail=error_msg)
+        data = response.json()
+        choices = data.get("choices", [])
+        if not choices:
+            raise HTTPException(status_code=502, detail="Пустой ответ от ИИ")
+        return choices[0].get("message", {}).get("content", "")
+
+
+async def _apply_ui(payload: UIApplyRequest, session_id: Optional[str] = None) -> dict:
+    conversation = [{"role": m.role, "content": m.content} for m in payload.messages]
+    conversation.append({
+        "role": "user",
+        "content": json.dumps({
+            "current_state": payload.current_state,
+            "request": payload.request,
+        }, ensure_ascii=False),
+    })
+
+    messages = [
+        {"role": "system", "content": UI_SYSTEM_PROMPT},
+        *conversation,
+    ]
+
+    try:
+        content = await _call_llm(messages, session_id)
+        parsed = _extract_json(content)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=502, detail=f"ИИ вернул некорректный JSON: {exc}")
+    except Exception as exc:
+        if isinstance(exc, HTTPException):
+            raise
+        raise HTTPException(status_code=502, detail=f"Ошибка обработки ответа ИИ: {exc}")
+
+    action = parsed.get("action", "none")
+    reply = parsed.get("reply", "")
+    state = _normalize_ui_state(parsed.get("state"))
+
+    return {
+        "reply": reply or ("Изменения применены" if state else "Готово"),
+        "action": action if action in ("replace", "add", "remove", "update", "none") else "none",
+        "state": state,
+    }
+
+
 @app.post("/api/chat")
 async def chat(payload: ChatRequest):
     messages = [{"role": m.role, "content": m.content} for m in payload.messages]
-    return await _stream_chat(messages)
+    return await _stream_chat(messages, payload.session_id)
+
+
+@app.post("/api/ui/apply")
+async def apply_ui(payload: UIApplyRequest):
+    session_id = str(uuid.uuid4())
+    return await _apply_ui(payload, session_id)
