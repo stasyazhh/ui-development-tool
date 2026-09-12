@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -274,13 +274,18 @@ def update_project_ui_state(project_id: int, payload: ProjectUIState):
         raise HTTPException(status_code=500, detail=f"Ошибка сохранения ui_state: {e}")
 
 
-async def _stream_chat(messages: list[dict[str, str]], session_id: Optional[str] = None):
-    if not AI_API_KEY:
+async def _stream_chat(
+    messages: list[dict[str, str]],
+    session_id: Optional[str] = None,
+    api_key: Optional[str] = None,
+):
+    key = api_key or AI_API_KEY
+    if not key:
         raise HTTPException(status_code=500, detail="AI_API_KEY не настроен")
 
     url = f"{AI_BASE_URL.rstrip('/')}/chat/completions"
     headers = {
-        "Authorization": f"Bearer {AI_API_KEY}",
+        "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
         "User-Agent": "ui-development-tool/1.0",
@@ -387,13 +392,18 @@ def _normalize_ui_state(state: Any) -> list[dict]:
     return normalized
 
 
-async def _call_llm(messages: list[dict[str, str]], session_id: Optional[str] = None) -> str:
-    if not AI_API_KEY:
+async def _call_llm(
+    messages: list[dict[str, str]],
+    session_id: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> str:
+    key = api_key or AI_API_KEY
+    if not key:
         raise HTTPException(status_code=500, detail="AI_API_KEY не настроен")
 
     url = f"{AI_BASE_URL.rstrip('/')}/chat/completions"
     headers = {
-        "Authorization": f"Bearer {AI_API_KEY}",
+        "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
         "User-Agent": "ui-development-tool/1.0",
         "x-opencode-session": session_id or str(uuid.uuid4()),
@@ -419,7 +429,11 @@ async def _call_llm(messages: list[dict[str, str]], session_id: Optional[str] = 
         return choices[0].get("message", {}).get("content", "")
 
 
-async def _apply_ui(payload: UIApplyRequest, session_id: Optional[str] = None) -> dict:
+async def _apply_ui(
+    payload: UIApplyRequest,
+    session_id: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> dict:
     conversation = [{"role": m.role, "content": m.content} for m in payload.messages]
     conversation.append({
         "role": "user",
@@ -436,7 +450,7 @@ async def _apply_ui(payload: UIApplyRequest, session_id: Optional[str] = None) -
     ]
 
     try:
-        content = await _call_llm(messages, session_id)
+        content = await _call_llm(messages, session_id, api_key)
         parsed = _extract_json(content)
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=502, detail=f"ИИ вернул некорректный JSON: {exc}")
@@ -457,12 +471,14 @@ async def _apply_ui(payload: UIApplyRequest, session_id: Optional[str] = None) -
 
 
 @app.post("/api/chat")
-async def chat(payload: ChatRequest):
+async def chat(payload: ChatRequest, request: Request):
     messages = [{"role": m.role, "content": m.content} for m in payload.messages]
-    return await _stream_chat(messages, payload.session_id)
+    api_key = request.headers.get("x-api-key") or AI_API_KEY
+    return await _stream_chat(messages, payload.session_id, api_key)
 
 
 @app.post("/api/ui/apply")
-async def apply_ui(payload: UIApplyRequest):
+async def apply_ui(payload: UIApplyRequest, request: Request):
+    api_key = request.headers.get("x-api-key") or AI_API_KEY
     session_id = str(uuid.uuid4())
-    return await _apply_ui(payload, session_id)
+    return await _apply_ui(payload, session_id, api_key)
