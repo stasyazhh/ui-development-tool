@@ -14,6 +14,14 @@ export interface Msg {
   time: string
 }
 
+export interface UIChange {
+  id: number
+  project_id: number
+  html_code: string
+  ui_state: unknown
+  created_at: string
+}
+
 export type Device = "mobile" | "desktop"
 export type RunState = "idle" | "checking" | "running"
 

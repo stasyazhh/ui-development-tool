@@ -1,19 +1,69 @@
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { C } from "@/theme"
-import { FILES, EXT_MARK, EXT_COLOR } from "@/types"
+import { FILES, EXT_MARK, EXT_COLOR, type FileNode } from "@/types"
+import { projectsApi, filesApi, type ApiProject } from "@/api"
 
 export default function Sidebar({
   selected,
   onSelect,
+  onProjectChange,
 }: {
   selected: string
   onSelect: (id: string) => void
+  onProjectChange?: (projectId: number) => void
 }) {
+  const [projects, setProjects] = useState<ApiProject[]>([])
+  const [activeProjectId, setActiveProjectId] = useState<number | null>(null)
+  const [files, setFiles] = useState<FileNode[]>(FILES)
   const [open, setOpen] = useState<Record<string, boolean>>({
     models: true,
     interfaces: true,
     tests: false,
   })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const loadProjects = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const { projects: list } = await projectsApi.list()
+      setProjects(list)
+      if (list.length > 0 && activeProjectId === null) {
+        const edu = list.find((p) => p.name === "EduAssistant") || list[0]
+        setActiveProjectId(edu.id)
+        onProjectChange?.(edu.id)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка загрузки проектов")
+    } finally {
+      setLoading(false)
+    }
+  }, [activeProjectId, onProjectChange])
+
+  useEffect(() => {
+    loadProjects()
+  }, [])
+
+  useEffect(() => {
+    if (activeProjectId === null) return
+    filesApi.list(activeProjectId).then(({ files }) => setFiles(files)).catch((e) => {
+      setError(e instanceof Error ? e.message : "Ошибка загрузки файлов")
+    })
+  }, [activeProjectId])
+
+  async function handleCreateProject() {
+    const name = prompt("Название проекта:")
+    if (!name?.trim()) return
+    try {
+      const project = await projectsApi.create(name.trim())
+      setProjects((prev) => [project, ...prev])
+      setActiveProjectId(project.id)
+      onProjectChange?.(project.id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка создания проекта")
+    }
+  }
 
   return (
     <div
@@ -48,6 +98,7 @@ export default function Sidebar({
           ПРОЕКТЫ
         </span>
         <button
+          onClick={handleCreateProject}
           style={{
             background: "none",
             border: "none",
@@ -62,20 +113,60 @@ export default function Sidebar({
         </button>
       </div>
 
-      <div
-        style={{
-          padding: "8px 14px 6px",
-          fontSize: 12,
-          fontWeight: 600,
-          color: C.t1,
-          flexShrink: 0,
-        }}
-      >
-        EduAssistant
-      </div>
+      {error && (
+        <div
+          style={{
+            padding: "8px 14px",
+            fontSize: 11,
+            color: "#ff6b6b",
+            fontFamily: C.mono,
+            borderBottom: `1px solid ${C.b1}`,
+          }}
+        >
+          {error}
+        </div>
+      )}
 
       <div style={{ flex: 1, overflowY: "auto", paddingBottom: 8 }}>
-        {FILES.map((folder) => (
+        {projects.map((project) => (
+          <button
+            key={project.id}
+            onClick={() => {
+              setActiveProjectId(project.id)
+              onProjectChange?.(project.id)
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              width: "100%",
+              background:
+                activeProjectId === project.id ? C.accA : "transparent",
+              border: "none",
+              borderLeft: `2px solid ${
+                activeProjectId === project.id ? C.acc : "transparent"
+              }`,
+              padding: "6px 14px",
+              fontSize: 12,
+              fontWeight: 600,
+              color: activeProjectId === project.id ? C.t1 : C.t2,
+              fontFamily: C.sans,
+              textAlign: "left",
+              cursor: "pointer",
+            }}
+          >
+            {project.name}
+          </button>
+        ))}
+
+        {activeProjectId !== null && files.length > 0 && (
+          <div
+            style={{
+              marginTop: 8,
+              paddingTop: 8,
+              borderTop: `1px solid ${C.b1}`,
+            }}
+          >
+            {files.map((folder) => (
           <div key={folder.id}>
             <button
               onClick={() =>
@@ -153,7 +244,9 @@ export default function Sidebar({
                 </button>
               ))}
           </div>
-        ))}
+            ))}
+          </div>
+        )}
       </div>
 
       <div

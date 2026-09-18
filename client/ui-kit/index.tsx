@@ -15,6 +15,7 @@ import {
 } from "./constants"
 import CompPreview from "./CompPreview"
 import PropRow from "./PropRow"
+import { uiStateApi } from "@/api"
 
 const inputStyle = {
   width: 60,
@@ -116,17 +117,54 @@ function PropColorRow({
   )
 }
 
-export default function VisualConstructor() {
+export default function VisualConstructor({
+  projectId,
+}: {
+  projectId: number | null
+}) {
   const [paletteSel, setPaletteSel] = useState<string | null>(null)
   const [placed, setPlaced] = useState<PlacedComp[]>([])
   const [selIds, setSelIds] = useState<string[]>([])
   const [drag, setDrag] = useState<DragCtx | null>(null)
   const [moved, setMoved] = useState(false)
+  const [loading, setLoading] = useState(false)
   const canvasRef = useRef<HTMLDivElement>(null)
   const uidRef = useRef(0)
 
   const selSet = new Set(selIds)
   const firstSel = placed.find((p) => selIds[0] === p.id) ?? null
+
+  useEffect(() => {
+    if (projectId === null) {
+      setPlaced([])
+      return
+    }
+    setLoading(true)
+    uiStateApi
+      .get(projectId)
+      .then(({ ui_state }) => {
+        if (ui_state) {
+          setPlaced(ui_state)
+          uidRef.current = ui_state.length
+        } else {
+          setPlaced([])
+          uidRef.current = 0
+        }
+      })
+      .catch(() => {
+        setPlaced([])
+        uidRef.current = 0
+      })
+      .finally(() => setLoading(false))
+  }, [projectId])
+
+  useEffect(() => {
+    if (projectId === null) return
+    const timeout = setTimeout(() => {
+      uiStateApi.update(projectId, placed).catch(() => {})
+    }, 800)
+    return () => clearTimeout(timeout)
+  }, [placed, projectId])
 
   function updateProp<K extends keyof PlacedComp>(
     id: string,

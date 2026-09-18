@@ -10,6 +10,7 @@ import LLMPanel from "../llm-communicator"
 import PreviewPanel from "../ui-viewer"
 
 export default function WorkplaceUI() {
+  const [activeProjectId, setActiveProjectId] = useState<number | null>(null)
   const [activeFile, setActiveFile] = useState("chat-tutor.ui")
   const [runState, setRunState] = useState<RunState>("idle")
   const [toast, setToast] = useState<Toast>(null)
@@ -76,7 +77,11 @@ export default function WorkplaceUI() {
         onSettings={() => setSettingsOpen((o) => !o)}
         onPreviewToggle={() => setPreviewOpen((o) => !o)}
       />
-      <Sidebar selected={activeFile} onSelect={setActiveFile} />
+      <Sidebar
+        selected={activeFile}
+        onSelect={setActiveFile}
+        onProjectChange={(id) => setActiveProjectId(id)}
+      />
 
       <div
         style={{
@@ -125,13 +130,13 @@ export default function WorkplaceUI() {
           }}
         >
           <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
-            <VisualConstructor />
+            <VisualConstructor projectId={activeProjectId} />
           </div>
           {previewOpen && <PreviewPanel />}
         </div>
       </div>
 
-      <LLMPanel />
+      <LLMPanel projectId={activeProjectId} />
     </div>
   )
 }

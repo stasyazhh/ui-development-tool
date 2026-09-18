@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from "react"
 import { C } from "@/theme"
 import { initMessages, type Msg } from "@/types"
+import { changesApi } from "@/api"
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api"
 
 function renderText(text: string) {
   return text.split("`").map((part, i) =>
@@ -24,30 +27,113 @@ function renderText(text: string) {
   )
 }
 
-export default function LLMPanel() {
+export default function LLMPanel({ projectId }: { projectId: number | null }) {
   const [msgs, setMsgs] = useState<Msg[]>(initMessages)
   const [input, setInput] = useState("")
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const sessionId = useRef<string>(`session-${Date.now()}`)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [msgs])
 
-  function send() {
+  async function send() {
     const text = input.trim()
-    if (!text) return
+    if (!text || busy) return
     const time = new Date().toLocaleTimeString("ru", {
       hour: "2-digit",
       minute: "2-digit",
     })
-    setMsgs((m) => [...m, { role: "user", text, time }])
+
+    const userMsg: Msg = { role: "user", text, time }
+    setMsgs((m) => [...m, userMsg])
     setInput("")
-    setTimeout(() => {
-      setMsgs((m) => [
-        ...m,
-        { role: "assistant", text: "Обрабатываю запрос...", time },
-      ])
-    }, 700)
+    setBusy(true)
+    setError(null)
+
+    const assistantPlaceholder: Msg = {
+      role: "assistant",
+      text: "Обрабатываю запрос...",
+      time,
+    }
+    setMsgs((m) => [...m, assistantPlaceholder])
+
+    try {
+      const messages = [...msgs, userMsg].map((m) => ({
+        role: m.role,
+        content: m.text,
+      }))
+
+      const response = await fetch(`${API_BASE}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages,
+          session_id: sessionId.current,
+        }),
+      })
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error(body.detail || `Ошибка ${response.status}`)
+      }
+
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error("Нет ответа от сервера")
+
+      let reply = ""
+      const decoder = new TextDecoder()
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split("\n")
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue
+          const data = line.slice(6)
+          if (data === "[DONE]") continue
+          try {
+            const parsed = JSON.parse(data)
+            if (parsed.error) throw new Error(parsed.error)
+            if (parsed.content) reply += parsed.content
+          } catch {
+            // ignore malformed lines
+          }
+        }
+      }
+
+      setMsgs((m) => {
+        const next = [...m]
+        next[next.length - 1] = {
+          role: "assistant",
+          text: reply.trim() || "Готово",
+          time,
+        }
+        return next
+      })
+
+      if (projectId !== null) {
+        changesApi
+          .create(projectId, "", undefined)
+          .catch(() => {})
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Ошибка сети"
+      setError(msg)
+      setMsgs((m) => {
+        const next = [...m]
+        next[next.length - 1] = {
+          role: "assistant",
+          text: `Ошибка: ${msg}`,
+          time,
+        }
+        return next
+      })
+    } finally {
+      setBusy(false)
+    }
   }
 
   function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
@@ -90,21 +176,26 @@ export default function LLMPanel() {
           АССИСТЕНТ
         </span>
         <div style={{ flex: 1 }} />
+        {busy && (
+          <span style={{ fontSize: 10, color: C.acc, fontFamily: C.mono }}>
+            ●
+          </span>
+        )}
+      </div>
+
+      {error && (
         <div
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 5,
-            background: C.s2,
-            border: `1px solid ${C.b2}`,
-            borderRadius: 2,
-            padding: "3px 8px",
-            fontSize: 10.5,
-            color: C.t2,
+            padding: "8px 14px",
+            fontSize: 11,
+            color: "#ff6b6b",
             fontFamily: C.mono,
+            borderBottom: `1px solid ${C.b1}`,
           }}
-        />
-      </div>
+        >
+          {error}
+        </div>
+      )}
 
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
         {msgs.map((m, i) => (
@@ -197,6 +288,7 @@ export default function LLMPanel() {
           onKeyDown={onKey}
           placeholder="Поставьте задачу... (Enter для отправки)"
           rows={3}
+          disabled={busy}
           style={{
             width: "100%",
             background: C.s2,
@@ -222,6 +314,7 @@ export default function LLMPanel() {
           </span>
           <button
             onClick={send}
+            disabled={busy}
             style={{
               background: C.acc,
               border: "none",
@@ -231,7 +324,8 @@ export default function LLMPanel() {
               fontFamily: C.sans,
               color: "#fff",
               fontWeight: 500,
-              cursor: "pointer",
+              cursor: busy ? "not-allowed" : "pointer",
+              opacity: busy ? 0.6 : 1,
             }}
           >
             Отправить ↵
