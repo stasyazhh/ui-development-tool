@@ -9,7 +9,7 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse
 from pydantic import BaseModel
 
 from projects_manager12.projects_manager import ProjectsManager
@@ -82,7 +82,7 @@ class FileUpdate(BaseModel):
 
 
 class UIChangeCreate(BaseModel):
-    html_code: str
+    html_code: str = ""
     ui_state: Any = None
 
 
@@ -482,3 +482,272 @@ async def apply_ui(payload: UIApplyRequest, request: Request):
     api_key = request.headers.get("x-api-key") or AI_API_KEY
     session_id = str(uuid.uuid4())
     return await _apply_ui(payload, session_id, api_key)
+
+
+def _render_component(c: dict, *, input_id: str | None = None, send_id: str | None = None) -> str:
+    comp_type = c.get("type", "")
+    x = c.get("x", 0)
+    y = c.get("y", 0)
+    w = c.get("w", 100)
+    h = c.get("h", 40)
+    bg = c.get("bg", "transparent")
+    color = c.get("color", "#ffffff")
+    radius = c.get("radius", 0)
+    text = c.get("text", "")
+    style = (
+        f"position:absolute;"
+        f"left:{x}px;"
+        f"top:{y}px;"
+        f"width:{w}px;"
+        f"height:{h}px;"
+        f"background:{bg};"
+        f"color:{color};"
+        f"border-radius:{radius}px;"
+        f"display:flex;"
+        f"align-items:center;"
+        f"justify-content:center;"
+        f"font-size:12px;"
+        f"font-family:system-ui,sans-serif;"
+        f"overflow:hidden;"
+        f"box-sizing:border-box;"
+    )
+    cid = c.get("id", "")
+    if comp_type == "Container":
+        return f'<div class="ui-static" style="{style} border:1px dashed rgba(255,255,255,0.08);"></div>'
+    if comp_type == "Text":
+        return f'<div class="ui-static" style="{style} background:transparent; justify-content:flex-start; padding:0 4px;">{_esc(text)}</div>'
+    if comp_type in ("Button", "Bubble", "QuickReply", "Prompt"):
+        if cid == send_id:
+            return f'<button id="chat-send" class="ui-static" style="{style} border:none; cursor:pointer;">{_esc(text)}</button>'
+        return f'<button class="ui-static quick-reply" data-text="{_esc(text)}" style="{style} border:none; cursor:pointer;">{_esc(text)}</button>'
+    if comp_type == "TextField":
+        if cid == input_id:
+            return f'<input id="chat-input" type="text" value="" placeholder="{_esc(text or "Введите сообщение...")}" style="{style} border:1px solid rgba(255,255,255,0.15); padding:0 10px; outline:none;" />'
+        return f'<div class="ui-static" style="{style} justify-content:flex-start; padding:0 8px; opacity:0.4;">{_esc(text or "Ввод...")}</div>'
+    if comp_type == "Avatar":
+        return f'<div class="ui-static" style="{style} border:none;"><div style="width:80%;height:80%;border-radius:50%;background:{color};display:grid;place-items:center;font-size:{min(w,h)//3}px;color:{bg};">{_esc(text or "")}</div></div>'
+    return f'<div class="ui-static" style="{style} border:1px dashed rgba(255,255,255,0.08);">{_esc(text)}</div>'
+
+
+def _esc(s: str) -> str:
+    return (
+        str(s)
+        .replace("&", "&amp;")
+        .replace('"', "&quot;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
+
+
+def _find_chat_container(state: list) -> dict | None:
+    containers = [c for c in state if c.get("type") == "Container"]
+    if not containers:
+        return None
+    artboard_area = 390 * 720
+    containers.sort(key=lambda c: c.get("w", 0) * c.get("h", 0), reverse=True)
+    for c in containers:
+        area = c.get("w", 0) * c.get("h", 0)
+        if area < artboard_area * 0.85:
+            return c
+    return containers[1] if len(containers) > 1 else containers[0]
+
+
+def _find_input_field(state: list) -> dict | None:
+    fields = [c for c in state if c.get("type") == "TextField"]
+    if not fields:
+        return None
+    fields.sort(key=lambda c: c.get("y", 0), reverse=True)
+    return fields[0]
+
+
+def _find_send_button(state: list, input_field: dict | None) -> dict | None:
+    buttons = [c for c in state if c.get("type") in ("Button", "Bubble", "QuickReply", "Prompt")]
+    if not buttons:
+        return None
+    if input_field is None:
+        return buttons[0]
+    ix, iy, iw, ih = input_field.get("x", 0), input_field.get("y", 0), input_field.get("w", 0), input_field.get("h", 0)
+    icx, icy = ix + iw / 2, iy + ih / 2
+
+    # Сначала ищем кнопку справа от поля ввода на той же высоте
+    inline_candidates = []
+    for b in buttons:
+        bx, by, bw, bh = b.get("x", 0), b.get("y", 0), b.get("w", 0), b.get("h", 0)
+        bcy = by + bh / 2
+        if bx > ix and abs(bcy - icy) <= max(ih, bh) * 0.8:
+            inline_candidates.append(b)
+    if inline_candidates:
+        return min(inline_candidates, key=lambda b: b.get("x", 0))
+
+    # Иначе ближайшая к полю ввода
+    def score(b: dict) -> float:
+        bx, by, bw, bh = b.get("x", 0), b.get("y", 0), b.get("w", 0), b.get("h", 0)
+        bcx, bcy = bx + bw / 2, by + bh / 2
+        return (bcx - icx) ** 2 + (bcy - icy) ** 2
+
+    return min(buttons, key=score)
+
+
+@app.get("/preview/{project_id}")
+def preview_project(project_id: int):
+    project = manager.get_project_by_id(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Проект не найден")
+
+    ui_state = manager.get_project_ui_state(project_id) or []
+    chat_container = _find_chat_container(ui_state)
+    input_field = _find_input_field(ui_state)
+    send_button = _find_send_button(ui_state, input_field)
+
+    input_id = input_field.get("id") if input_field else None
+    send_id = send_button.get("id") if send_button else None
+
+    static_elements = []
+    for c in ui_state:
+        if chat_container and c.get("id") == chat_container.get("id"):
+            continue
+        static_elements.append(_render_component(c, input_id=input_id, send_id=send_id))
+
+    if chat_container:
+        cx = chat_container.get("x", 0)
+        cy = chat_container.get("y", 0)
+        cw = chat_container.get("w", 390)
+        ch = chat_container.get("h", 500)
+        cbg = chat_container.get("bg", "#111")
+        cradius = chat_container.get("radius", 0)
+        chat_style = (
+            f"position:absolute;"
+            f"left:{cx}px;"
+            f"top:{cy}px;"
+            f"width:{cw}px;"
+            f"height:{ch}px;"
+            f"background:{cbg};"
+            f"border-radius:{cradius}px;"
+            f"display:flex;"
+            f"flex-direction:column;"
+            f"overflow:hidden;"
+            f"box-sizing:border-box;"
+        )
+    else:
+        chat_style = (
+            "position:absolute;"
+            "left:50%;top:50%;"
+            "transform:translate(-50%,-50%);"
+            "width:360px;height:520px;"
+            "background:#1a1a1f;"
+            "border-radius:12px;"
+            "display:flex;"
+            "flex-direction:column;"
+            "overflow:hidden;"
+        )
+
+    html = f'''<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{_esc(project.name)} · Превью</title>
+  <style>
+    body {{ margin:0; background:#0c0c0e; font-family:system-ui,sans-serif; overflow:hidden; }}
+    #artboard {{ position:relative; width:100%; height:100vh; overflow:hidden; }}
+    .msg-user {{ align-self:flex-end; background:#5b7fff; color:#fff; padding:8px 12px; border-radius:12px 12px 2px 12px; font-size:12px; max-width:80%; line-height:1.45; white-space:pre-wrap; }}
+    .msg-assistant {{ align-self:flex-start; background:rgba(255,255,255,0.08); color:#fff; padding:8px 12px; border-radius:12px 12px 12px 2px; font-size:12px; max-width:85%; line-height:1.45; white-space:pre-wrap; }}
+    .msg-system {{ align-self:center; color:#888; font-size:11px; padding:4px 0; }}
+  </style>
+</head>
+<body>
+  <div id="artboard">
+    {''.join(static_elements)}
+    <div id="chat-container" style="{chat_style}">
+      <div id="chat-messages" style="flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+  </div>
+  <script>
+    const sessionId = "preview-" + Math.random().toString(36).slice(2);
+    const messages = [];
+    const container = document.getElementById("chat-messages");
+    const input = document.getElementById("chat-input");
+    const sendBtn = document.getElementById("chat-send");
+
+    function addMessage(text, role) {{
+      const div = document.createElement("div");
+      div.className = role === "user" ? "msg-user" : role === "assistant" ? "msg-assistant" : "msg-system";
+      div.textContent = text;
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+    }}
+
+    function setInput(enabled) {{
+      if (input) input.disabled = !enabled;
+      if (sendBtn) {{
+        sendBtn.disabled = !enabled;
+        sendBtn.style.opacity = enabled ? "1" : "0.5";
+      }}
+    }}
+
+    async function sendMessage(text) {{
+      if (!text.trim()) return;
+      addMessage(text, "user");
+      messages.push({{role:"user", content:text}});
+      if (input) input.value = "";
+      setInput(false);
+      const assistantEl = document.createElement("div");
+      assistantEl.className = "msg-assistant";
+      container.appendChild(assistantEl);
+      container.scrollTop = container.scrollHeight;
+
+      try {{
+        const res = await fetch("/api/chat", {{
+          method: "POST",
+          headers: {{"Content-Type":"application/json"}},
+          body: JSON.stringify({{messages: messages, session_id: sessionId}})
+        }});
+        if (!res.ok) throw new Error("Ошибка сети " + res.status);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let reply = "";
+        while (true) {{
+          const {{done, value}} = await reader.read();
+          if (done) break;
+          const lines = decoder.decode(value, {{stream:true}}).split("\\n");
+          for (const line of lines) {{
+            if (!line.startsWith("data: ")) continue;
+            const data = line.slice(6);
+            if (data === "[DONE]") continue;
+            try {{
+              const parsed = JSON.parse(data);
+              if (parsed.error) throw new Error(parsed.error);
+              if (parsed.content) {{
+                reply += parsed.content;
+                assistantEl.textContent = reply;
+                container.scrollTop = container.scrollHeight;
+              }}
+            }} catch {{}}
+          }}
+        }}
+        messages.push({{role:"assistant", content: reply}});
+      }} catch (e) {{
+        assistantEl.textContent = "Ошибка: " + e.message;
+      }} finally {{
+        setInput(true);
+        if (input) input.focus();
+      }}
+    }}
+
+    if (sendBtn) sendBtn.addEventListener("click", () => sendMessage(input ? input.value : ""));
+    if (input) input.addEventListener("keydown", (e) => {{
+      if (e.key === "Enter" && !e.shiftKey) {{
+        e.preventDefault();
+        sendMessage(input.value);
+      }}
+    }});
+
+    document.querySelectorAll(".quick-reply").forEach(btn => {{
+      btn.addEventListener("click", () => sendMessage(btn.dataset.text || btn.textContent));
+    }});
+
+    addMessage("Ассистент готов к диалогу", "system");
+  </script>
+</body>
+</html>'''
+    return HTMLResponse(content=html)

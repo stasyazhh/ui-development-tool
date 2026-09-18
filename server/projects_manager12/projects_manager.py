@@ -207,10 +207,7 @@ class ProjectsManager:
         finally:
             cursor.close()
     
-    def record_ui_change(self, project_id: int, html_code: str, ui_state=None) -> Dict:
-        if not html_code or not html_code.strip():
-            raise ValueError("HTML-код не может быть пустым")
-        
+    def record_ui_change(self, project_id: int, html_code: str = "", ui_state=None) -> Dict:
         self._ensure_connection()
         cursor = self.connection.cursor()
         try:
@@ -218,7 +215,7 @@ class ProjectsManager:
                 INSERT INTO project_ui_changes (project_id, html_code, ui_state)
                 VALUES (%s, %s, %s::jsonb)
                 RETURNING id, project_id, html_code, ui_state, created_at
-            """, (project_id, html_code.strip(), json.dumps(ui_state) if ui_state is not None else None))
+            """, (project_id, html_code.strip() if html_code else "", json.dumps(ui_state) if ui_state is not None else None))
             row = cursor.fetchone()
             self.connection.commit()
             return {
