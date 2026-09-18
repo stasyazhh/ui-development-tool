@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from "react"
 import { C } from "@/theme"
 import { initMessages, type Msg } from "@/types"
-import { changesApi } from "@/api"
+
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api"
 
@@ -114,11 +114,6 @@ export default function LLMPanel({ projectId }: { projectId: number | null }) {
         return next
       })
 
-      if (projectId !== null) {
-        changesApi
-          .create(projectId, "", undefined)
-          .catch(() => {})
-      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Ошибка сети"
       setError(msg)

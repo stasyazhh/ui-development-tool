@@ -15,7 +15,7 @@ import {
 } from "./constants"
 import CompPreview from "./CompPreview"
 import PropRow from "./PropRow"
-import { uiStateApi } from "@/api"
+import { uiStateApi, changesApi } from "@/api"
 
 const inputStyle = {
   width: 60,
@@ -119,8 +119,12 @@ function PropColorRow({
 
 export default function VisualConstructor({
   projectId,
+  restoredState,
+  onSave,
 }: {
   projectId: number | null
+  restoredState?: PlacedComp[] | null
+  onSave?: () => void
 }) {
   const [paletteSel, setPaletteSel] = useState<string | null>(null)
   const [placed, setPlaced] = useState<PlacedComp[]>([])
@@ -128,6 +132,8 @@ export default function VisualConstructor({
   const [drag, setDrag] = useState<DragCtx | null>(null)
   const [moved, setMoved] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [savingAll, setSavingAll] = useState(false)
   const canvasRef = useRef<HTMLDivElement>(null)
   const uidRef = useRef(0)
 
@@ -157,6 +163,12 @@ export default function VisualConstructor({
       })
       .finally(() => setLoading(false))
   }, [projectId])
+
+  useEffect(() => {
+    if (restoredState === undefined || restoredState === null) return
+    setPlaced(restoredState)
+    uidRef.current = restoredState.length
+  }, [restoredState])
 
   useEffect(() => {
     if (projectId === null) return
@@ -294,6 +306,33 @@ export default function VisualConstructor({
     setSelIds([])
   }
 
+  async function saveSelected() {
+    if (projectId === null || selIds.length === 0) return
+    setSaving(true)
+    try {
+      const selected = placed.filter((c) => selSet.has(c.id))
+      await changesApi.create(projectId, "", selected)
+      onSave?.()
+    } catch {
+      // ignore
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveAll() {
+    if (projectId === null || placed.length === 0) return
+    setSavingAll(true)
+    try {
+      await changesApi.create(projectId, "", placed)
+      onSave?.()
+    } catch {
+      // ignore
+    } finally {
+      setSavingAll(false)
+    }
+  }
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key !== "Delete" && e.key !== "Backspace") return
@@ -424,21 +463,39 @@ export default function VisualConstructor({
           )}
           <div style={{ flex: 1 }} />
           {selIds.length > 0 && (
-            <button
-              onClick={deleteSelected}
-              style={{
-                background: "none",
-                border: `1px solid ${C.b2}`,
-                borderRadius: 2,
-                padding: "2px 8px",
-                fontSize: 10,
-                fontFamily: C.mono,
-                color: "#e05555",
-                cursor: "pointer",
-              }}
-            >
-              удалить ({selIds.length}) ✕
-            </button>
+            <>
+              <button
+                onClick={saveSelected}
+                disabled={saving}
+                style={{
+                  background: "none",
+                  border: `1px solid ${C.b2}`,
+                  borderRadius: 2,
+                  padding: "2px 8px",
+                  fontSize: 10,
+                  fontFamily: C.mono,
+                  color: saving ? C.t3 : C.grn,
+                  cursor: saving ? "not-allowed" : "pointer",
+                }}
+              >
+                {saving ? "сохранение..." : `сохранить (${selIds.length}) ✓`}
+              </button>
+              <button
+                onClick={deleteSelected}
+                style={{
+                  background: "none",
+                  border: `1px solid ${C.b2}`,
+                  borderRadius: 2,
+                  padding: "2px 8px",
+                  fontSize: 10,
+                  fontFamily: C.mono,
+                  color: "#e05555",
+                  cursor: "pointer",
+                }}
+              >
+                удалить ({selIds.length}) ✕
+              </button>
+            </>
           )}
           {paletteSel && (
             <button
@@ -755,6 +812,32 @@ export default function VisualConstructor({
             Выберите компонент в палитре или кликните на объект
           </div>
         )}
+
+        <div style={{ flex: 1 }} />
+
+        <button
+          onClick={saveAll}
+          disabled={savingAll || projectId === null || placed.length === 0}
+          style={{
+            margin: 12,
+            padding: "8px 12px",
+            background: projectId === null || placed.length === 0 ? C.s2 : C.grn,
+            border: "none",
+            borderRadius: 4,
+            color:
+              projectId === null || placed.length === 0 ? C.t3 : "#fff",
+            fontFamily: C.sans,
+            fontSize: 12,
+            fontWeight: 500,
+            cursor:
+              projectId === null || placed.length === 0 || savingAll
+                ? "not-allowed"
+                : "pointer",
+            opacity: savingAll ? 0.7 : 1,
+          }}
+        >
+          {savingAll ? "Сохранение…" : "Сохранить интерфейс"}
+        </button>
       </div>
     </div>
   )

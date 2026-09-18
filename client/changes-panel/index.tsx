@@ -109,49 +109,64 @@ export default function ChangesPanel({
                 borderLeft: `2px solid ${expanded ? C.acc : "transparent"}`,
               }}
             >
-              <button
-                onClick={() =>
-                  setExpandedId(expanded ? null : change.id)
-                }
+              <div
                 style={{
                   display: "flex",
                   alignItems: "center",
                   gap: 8,
                   width: "100%",
-                  background: "none",
-                  border: "none",
-                  padding: 0,
-                  cursor: "pointer",
-                  textAlign: "left",
                 }}
               >
-                <span
+                <button
+                  onClick={() => setExpandedId(expanded ? null : change.id)}
                   style={{
-                    fontSize: 10,
-                    fontFamily: C.mono,
-                    fontWeight: 600,
-                    color: expanded ? C.acc : C.t2,
-                    minWidth: 28,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    flex: 1,
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    textAlign: "left",
                   }}
                 >
-                  #{number}
-                </span>
-                <span
-                  style={{
-                    fontSize: 9,
-                    fontFamily: C.mono,
-                    color: C.t3,
-                  }}
-                >
-                  {formatTime(change.created_at)}
-                </span>
-                <span style={{ flex: 1 }} />
-                {onRestore && change.ui_state && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onRestore(change)
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontFamily: C.mono,
+                      fontWeight: 600,
+                      color: expanded ? C.acc : C.t2,
+                      minWidth: 28,
                     }}
+                  >
+                    #{number}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 9,
+                      fontFamily: C.mono,
+                      color: C.t3,
+                    }}
+                  >
+                    {formatTime(change.created_at)}
+                  </span>
+                  <span style={{ flex: 1 }} />
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: C.t3,
+                      transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+                      transition: "transform .12s",
+                    }}
+                  >
+                    ▾
+                  </span>
+                </button>
+
+                {onRestore && change.ui_state != null && (
+                  <button
+                    onClick={() => onRestore(change)}
                     title="Восстановить эту версию на канвасе"
                     style={{
                       background: "none",
@@ -166,17 +181,7 @@ export default function ChangesPanel({
                     восстановить
                   </button>
                 )}
-                <span
-                  style={{
-                    fontSize: 10,
-                    color: C.t3,
-                    transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
-                    transition: "transform .12s",
-                  }}
-                >
-                  ▾
-                </span>
-              </button>
+              </div>
 
               {expanded && (
                 <pre
@@ -195,7 +200,7 @@ export default function ChangesPanel({
                     overflowY: "auto",
                   }}
                 >
-                  {change.html_code}
+                  {String(change.html_code)}
                 </pre>
               )}
             </div>

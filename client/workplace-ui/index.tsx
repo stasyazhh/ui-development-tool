@@ -1,13 +1,16 @@
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { C } from "@/theme"
-import { EXT_MARK, type RunState, type Toast } from "@/types"
+import { EXT_MARK, type RunState, type Toast, type UIChange } from "@/types"
+import { changesApi } from "@/api"
+import type { PlacedComp } from "../ui-kit/constants"
 import ToastBanner from "./ToastBanner"
 import TopBar from "./TopBar"
 import SettingsPanel from "./SettingsPanel"
 import Sidebar from "../projects-browser"
 import VisualConstructor from "../ui-kit"
 import LLMPanel from "../llm-communicator"
-import PreviewPanel from "../ui-viewer"
+
+import ChangesPanel from "../changes-panel"
 
 export default function WorkplaceUI() {
   const [activeProjectId, setActiveProjectId] = useState<number | null>(null)
@@ -15,7 +18,11 @@ export default function WorkplaceUI() {
   const [runState, setRunState] = useState<RunState>("idle")
   const [toast, setToast] = useState<Toast>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [previewOpen, setPreviewOpen] = useState(true)
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [changes, setChanges] = useState<UIChange[]>([])
+  const [changesLoading, setChangesLoading] = useState(false)
+  const [restoredState, setRestoredState] = useState<PlacedComp[] | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function showToast(t: Toast) {
@@ -53,6 +60,19 @@ export default function WorkplaceUI() {
     }, 2400)
   }
 
+  useEffect(() => {
+    if (activeProjectId === null) {
+      setChanges([])
+      return
+    }
+    setChangesLoading(true)
+    changesApi
+      .list(activeProjectId)
+      .then(({ changes: list }) => setChanges(list))
+      .catch(() => setChanges([]))
+      .finally(() => setChangesLoading(false))
+  }, [activeProjectId])
+
   return (
     <div
       style={{
@@ -72,10 +92,13 @@ export default function WorkplaceUI() {
         runState={runState}
         settingsOpen={settingsOpen}
         previewOpen={previewOpen}
+        historyOpen={historyOpen}
+        projectId={activeProjectId}
         onCheck={handleCheck}
         onRun={handleRun}
         onSettings={() => setSettingsOpen((o) => !o)}
         onPreviewToggle={() => setPreviewOpen((o) => !o)}
+        onHistoryToggle={() => setHistoryOpen((o) => !o)}
       />
       <Sidebar
         selected={activeFile}
@@ -130,13 +153,47 @@ export default function WorkplaceUI() {
           }}
         >
           <div style={{ flex: 1, overflow: "hidden", display: "flex" }}>
-            <VisualConstructor projectId={activeProjectId} />
+            <VisualConstructor
+              projectId={activeProjectId}
+              restoredState={restoredState}
+              onSave={async () => {
+                if (activeProjectId === null) return
+                setChangesLoading(true)
+                try {
+                  const { changes: list } = await changesApi.list(activeProjectId)
+                  setChanges(list)
+                  showToast({ text: "Сохранение добавлено в историю", kind: "ok" })
+                } catch (e) {
+                  showToast({
+                    text: e instanceof Error ? e.message : "Ошибка обновления истории",
+                    kind: "err",
+                  })
+                } finally {
+                  setChangesLoading(false)
+                }
+              }}
+            />
           </div>
-          {previewOpen && <PreviewPanel />}
+
         </div>
       </div>
 
-      <LLMPanel projectId={activeProjectId} />
+      {historyOpen ? (
+        <ChangesPanel
+          projectId={activeProjectId}
+          changes={changes}
+          loading={changesLoading}
+          onRestore={(change) => {
+            const state = change.ui_state as PlacedComp[] | null
+            if (state) {
+              setRestoredState(state)
+              showToast({ text: "Версия восстановлена на канвасе", kind: "ok" })
+            }
+          }}
+        />
+      ) : (
+        <LLMPanel projectId={activeProjectId} />
+      )}
     </div>
   )
 }

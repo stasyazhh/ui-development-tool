@@ -7,19 +7,25 @@ export default function TopBar({
   runState,
   settingsOpen,
   previewOpen,
+  historyOpen,
+  projectId,
   onCheck,
   onRun,
   onSettings,
   onPreviewToggle,
+  onHistoryToggle,
 }: {
   activeFile: string
   runState: RunState
   settingsOpen: boolean
   previewOpen: boolean
+  historyOpen: boolean
+  projectId: number | null
   onCheck: () => void
   onRun: () => void
   onSettings: () => void
   onPreviewToggle: () => void
+  onHistoryToggle: () => void
 }) {
   return (
     <div
@@ -79,7 +85,20 @@ export default function TopBar({
         <TbBtn
           label={previewOpen ? "Превью" : "Превью"}
           active={previewOpen}
-          onClick={onPreviewToggle}
+          onClick={() => {
+            if (projectId !== null) {
+              window.open(
+                `http://localhost:8000/preview/${projectId}`,
+                "_blank",
+              )
+            }
+            onPreviewToggle()
+          }}
+        />
+        <TbBtn
+          label="История"
+          active={historyOpen}
+          onClick={onHistoryToggle}
         />
         <div
           style={{ width: 1, height: 18, background: C.b2, margin: "0 2px" }}
