@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from "react"
 import { C } from "@/theme"
-import { initMessages, type Msg } from "@/types"
+import type { Msg } from "@/types"
 
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api"
@@ -27,8 +27,15 @@ function renderText(text: string) {
   )
 }
 
-export default function LLMPanel({ projectId }: { projectId: number | null }) {
-  const [msgs, setMsgs] = useState<Msg[]>(initMessages)
+export default function LLMPanel({
+  projectId,
+  messages,
+  setMessages,
+}: {
+  projectId: number | null
+  messages: Msg[]
+  setMessages: React.Dispatch<React.SetStateAction<Msg[]>>
+}) {
   const [input, setInput] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -37,7 +44,7 @@ export default function LLMPanel({ projectId }: { projectId: number | null }) {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [msgs])
+  }, [messages])
 
   async function send() {
     const text = input.trim()
@@ -48,7 +55,7 @@ export default function LLMPanel({ projectId }: { projectId: number | null }) {
     })
 
     const userMsg: Msg = { role: "user", text, time }
-    setMsgs((m) => [...m, userMsg])
+    setMessages((m) => [...m, userMsg])
     setInput("")
     setBusy(true)
     setError(null)
@@ -58,10 +65,10 @@ export default function LLMPanel({ projectId }: { projectId: number | null }) {
       text: "Обрабатываю запрос...",
       time,
     }
-    setMsgs((m) => [...m, assistantPlaceholder])
+    setMessages((m) => [...m, assistantPlaceholder])
 
     try {
-      const messages = [...msgs, userMsg].map((m) => ({
+      const apiMessages = [...messages, userMsg].map((m) => ({
         role: m.role,
         content: m.text,
       }))
@@ -70,7 +77,7 @@ export default function LLMPanel({ projectId }: { projectId: number | null }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages,
+          messages: apiMessages,
           session_id: sessionId.current,
         }),
       })
@@ -104,7 +111,7 @@ export default function LLMPanel({ projectId }: { projectId: number | null }) {
         }
       }
 
-      setMsgs((m) => {
+      setMessages((m) => {
         const next = [...m]
         next[next.length - 1] = {
           role: "assistant",
@@ -117,7 +124,7 @@ export default function LLMPanel({ projectId }: { projectId: number | null }) {
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Ошибка сети"
       setError(msg)
-      setMsgs((m) => {
+      setMessages((m) => {
         const next = [...m]
         next[next.length - 1] = {
           role: "assistant",
@@ -193,7 +200,7 @@ export default function LLMPanel({ projectId }: { projectId: number | null }) {
       )}
 
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
-        {msgs.map((m, i) => (
+        {messages.map((m, i) => (
           <div
             key={i}
             style={{

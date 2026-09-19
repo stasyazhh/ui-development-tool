@@ -1,9 +1,49 @@
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { C } from "@/theme"
 import type { Device } from "@/types"
+import { uiStateApi } from "@/api"
+import type { PlacedComp } from "../ui-kit/constants"
+import { AB, effectiveProps } from "../ui-kit/constants"
+import CompPreview from "../ui-kit/CompPreview"
 
-export default function PreviewPanel() {
+export default function PreviewPanel({ projectId }: { projectId: number | null }) {
   const [device, setDevice] = useState<Device>("mobile")
+  const [placed, setPlaced] = useState<PlacedComp[]>([])
+  const [loading, setLoading] = useState(false)
+  const [scale, setScale] = useState(1)
+  const canvasRef = useRef<HTMLDivElement>(null)
+
+  async function load() {
+    if (projectId === null) {
+      setPlaced([])
+      return
+    }
+    setLoading(true)
+    try {
+      const { ui_state } = await uiStateApi.get(projectId)
+      setPlaced(ui_state ?? [])
+    } catch {
+      setPlaced([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    load()
+  }, [projectId])
+
+  useEffect(() => {
+    function updateScale() {
+      if (!canvasRef.current) return
+      const rect = canvasRef.current.getBoundingClientRect()
+      const s = Math.min(rect.width / AB.w, rect.height / AB.h)
+      setScale(Math.max(0.1, Math.min(s, 2)))
+    }
+    updateScale()
+    window.addEventListener("resize", updateScale)
+    return () => window.removeEventListener("resize", updateScale)
+  }, [device, placed])
 
   return (
     <div
@@ -61,6 +101,8 @@ export default function PreviewPanel() {
           ● live
         </span>
         <button
+          onClick={load}
+          disabled={loading}
           style={{
             background: "none",
             border: `1px solid ${C.b2}`,
@@ -68,8 +110,8 @@ export default function PreviewPanel() {
             padding: "2px 9px",
             fontSize: 10,
             fontFamily: C.mono,
-            color: C.t2,
-            cursor: "pointer",
+            color: loading ? C.t3 : C.t2,
+            cursor: loading ? "not-allowed" : "pointer",
           }}
         >
           ⟳ обновить
@@ -138,56 +180,95 @@ export default function PreviewPanel() {
             </span>
           </div>
           <div
+            ref={canvasRef}
             style={{
               flex: 1,
-              padding: 10,
-              display: "flex",
-              flexDirection: "column",
-              gap: 7,
+              position: "relative",
               overflow: "hidden",
+              background: C.bg,
             }}
           >
-            <div
-              style={{
-                alignSelf: "flex-start",
-                background: C.s1,
-                border: `1px solid ${C.b1}`,
-                padding: "5px 9px",
-                fontSize: 10,
-                color: C.t1,
-                maxWidth: "85%",
-                lineHeight: 1.45,
-              }}
-            >
-              Что изучаем сегодня?
-            </div>
-            <div
-              style={{
-                alignSelf: "flex-end",
-                background: C.acc,
-                padding: "5px 9px",
-                fontSize: 10,
-                color: "#fff",
-                maxWidth: "80%",
-                lineHeight: 1.45,
-              }}
-            >
-              Тригонометрия
-            </div>
-            <div
-              style={{
-                alignSelf: "flex-start",
-                background: C.s1,
-                border: `1px solid ${C.b1}`,
-                padding: "5px 9px",
-                fontSize: 10,
-                color: C.t1,
-                maxWidth: "85%",
-                lineHeight: 1.45,
-              }}
-            >
-              Начнём с единичной окружности...
-            </div>
+            {projectId === null ? (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 16,
+                  fontSize: 11,
+                  fontFamily: C.sans,
+                  color: C.t2,
+                  textAlign: "center",
+                }}
+              >
+                Выберите проект, чтобы увидеть его интерфейс.
+              </div>
+            ) : (
+              <div
+                style={{
+                  position: "absolute",
+                  left: "50%",
+                  top: "50%",
+                  width: AB.w * scale,
+                  height: AB.h * scale,
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                <div
+                  style={{
+                    width: AB.w,
+                    height: AB.h,
+                    transform: `scale(${scale})`,
+                    transformOrigin: "top left",
+                    background: "#1a1a1f",
+                    border: `1px solid ${C.b2}`,
+                    position: "relative",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      height: 28,
+                      background: "#141417",
+                      borderBottom: `1px solid ${C.b1}`,
+                      display: "flex",
+                      alignItems: "center",
+                      padding: "0 16px",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span style={{ fontSize: 10, fontFamily: C.mono, color: C.t3 }}>
+                      9:41
+                    </span>
+                    <span style={{ fontSize: 10, fontFamily: C.mono, color: C.t3 }}>
+                      ▮▮▮
+                    </span>
+                  </div>
+                  {placed.map((comp) => {
+                    const props = effectiveProps(comp)
+                    return (
+                      <div
+                        key={comp.id}
+                        style={{
+                          position: "absolute",
+                          left: comp.x,
+                          top: comp.y,
+                          width: props.w,
+                          height: props.h,
+                          background: props.bg,
+                          borderRadius: props.radius,
+                          overflow: "hidden",
+                        }}
+                      >
+                        <CompPreview type={comp.type} props={comp} />
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
           <div
             style={{

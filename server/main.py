@@ -484,10 +484,16 @@ async def apply_ui(payload: UIApplyRequest, request: Request):
     return await _apply_ui(payload, session_id, api_key)
 
 
-def _render_component(c: dict, *, input_id: str | None = None, send_id: str | None = None) -> str:
+AB_X = 160
+AB_Y = 80
+AB_W = 390
+AB_H = 720
+
+
+def _render_component(c: dict, offset_x: int = 0, offset_y: int = 0) -> str:
     comp_type = c.get("type", "")
-    x = c.get("x", 0)
-    y = c.get("y", 0)
+    x = c.get("x", 0) - offset_x
+    y = c.get("y", 0) - offset_y
     w = c.get("w", 100)
     h = c.get("h", 40)
     bg = c.get("bg", "transparent")
@@ -511,18 +517,13 @@ def _render_component(c: dict, *, input_id: str | None = None, send_id: str | No
         f"overflow:hidden;"
         f"box-sizing:border-box;"
     )
-    cid = c.get("id", "")
     if comp_type == "Container":
         return f'<div class="ui-static" style="{style} border:1px dashed rgba(255,255,255,0.08);"></div>'
     if comp_type == "Text":
         return f'<div class="ui-static" style="{style} background:transparent; justify-content:flex-start; padding:0 4px;">{_esc(text)}</div>'
     if comp_type in ("Button", "Bubble", "QuickReply", "Prompt"):
-        if cid == send_id:
-            return f'<button id="chat-send" class="ui-static" style="{style} border:none; cursor:pointer;">{_esc(text)}</button>'
         return f'<button class="ui-static quick-reply" data-text="{_esc(text)}" style="{style} border:none; cursor:pointer;">{_esc(text)}</button>'
     if comp_type == "TextField":
-        if cid == input_id:
-            return f'<input id="chat-input" type="text" value="" placeholder="{_esc(text or "Введите сообщение...")}" style="{style} border:1px solid rgba(255,255,255,0.15); padding:0 10px; outline:none;" />'
         return f'<div class="ui-static" style="{style} justify-content:flex-start; padding:0 8px; opacity:0.4;">{_esc(text or "Ввод...")}</div>'
     if comp_type == "Avatar":
         return f'<div class="ui-static" style="{style} border:none;"><div style="width:80%;height:80%;border-radius:50%;background:{color};display:grid;place-items:center;font-size:{min(w,h)//3}px;color:{bg};">{_esc(text or "")}</div></div>'
@@ -539,53 +540,41 @@ def _esc(s: str) -> str:
     )
 
 
-def _find_chat_container(state: list) -> dict | None:
-    containers = [c for c in state if c.get("type") == "Container"]
-    if not containers:
-        return None
-    artboard_area = 390 * 720
-    containers.sort(key=lambda c: c.get("w", 0) * c.get("h", 0), reverse=True)
-    for c in containers:
-        area = c.get("w", 0) * c.get("h", 0)
-        if area < artboard_area * 0.85:
-            return c
-    return containers[1] if len(containers) > 1 else containers[0]
+def _color_prop(state: list, types: tuple, prop: str, default: str) -> str:
+    for c in state:
+        if c.get("type") in types and prop in c:
+            val = str(c[prop]).strip().lower()
+            if val and val != "transparent":
+                return str(c[prop])
+    return default
 
 
-def _find_input_field(state: list) -> dict | None:
-    fields = [c for c in state if c.get("type") == "TextField"]
-    if not fields:
-        return None
-    fields.sort(key=lambda c: c.get("y", 0), reverse=True)
-    return fields[0]
+def _find_chat_input_ids(state: list) -> set:
+    ids = set()
+    text_fields = [c for c in state if c.get("type") == "TextField"]
+    if text_fields:
+        input_field = max(text_fields, key=lambda c: c.get("y", 0))
+        ids.add(input_field.get("id"))
 
+        ix, iy, iw, ih = (
+            input_field.get("x", 0),
+            input_field.get("y", 0),
+            input_field.get("w", 0),
+            input_field.get("h", 0),
+        )
+        icy = iy + ih / 2
 
-def _find_send_button(state: list, input_field: dict | None) -> dict | None:
-    buttons = [c for c in state if c.get("type") in ("Button", "Bubble", "QuickReply", "Prompt")]
-    if not buttons:
-        return None
-    if input_field is None:
-        return buttons[0]
-    ix, iy, iw, ih = input_field.get("x", 0), input_field.get("y", 0), input_field.get("w", 0), input_field.get("h", 0)
-    icx, icy = ix + iw / 2, iy + ih / 2
+        send_candidates = []
+        for b in [c for c in state if c.get("type") == "Button"]:
+            bx, by, bw, bh = b.get("x", 0), b.get("y", 0), b.get("w", 0), b.get("h", 0)
+            bcy = by + bh / 2
+            if bx > ix + iw * 0.5 and abs(bcy - icy) <= max(ih, bh) * 0.8:
+                send_candidates.append(b)
 
-    # Сначала ищем кнопку справа от поля ввода на той же высоте
-    inline_candidates = []
-    for b in buttons:
-        bx, by, bw, bh = b.get("x", 0), b.get("y", 0), b.get("w", 0), b.get("h", 0)
-        bcy = by + bh / 2
-        if bx > ix and abs(bcy - icy) <= max(ih, bh) * 0.8:
-            inline_candidates.append(b)
-    if inline_candidates:
-        return min(inline_candidates, key=lambda b: b.get("x", 0))
-
-    # Иначе ближайшая к полю ввода
-    def score(b: dict) -> float:
-        bx, by, bw, bh = b.get("x", 0), b.get("y", 0), b.get("w", 0), b.get("h", 0)
-        bcx, bcy = bx + bw / 2, by + bh / 2
-        return (bcx - icx) ** 2 + (bcy - icy) ** 2
-
-    return min(buttons, key=score)
+        if send_candidates:
+            send_candidates.sort(key=lambda b: b.get("x", 0))
+            ids.add(send_candidates[0].get("id"))
+    return ids
 
 
 @app.get("/preview/{project_id}")
@@ -595,51 +584,21 @@ def preview_project(project_id: int):
         raise HTTPException(status_code=404, detail="Проект не найден")
 
     ui_state = manager.get_project_ui_state(project_id) or []
-    chat_container = _find_chat_container(ui_state)
-    input_field = _find_input_field(ui_state)
-    send_button = _find_send_button(ui_state, input_field)
 
-    input_id = input_field.get("id") if input_field else None
-    send_id = send_button.get("id") if send_button else None
+    dialog_types = {"Bubble", "Typing", "QuickReply", "Prompt"}
+    chat_input_ids = _find_chat_input_ids(ui_state)
+    static_elements = [
+        _render_component(c, offset_x=AB_X, offset_y=AB_Y)
+        for c in ui_state
+        if c.get("type") not in dialog_types and c.get("id") not in chat_input_ids
+    ]
 
-    static_elements = []
-    for c in ui_state:
-        if chat_container and c.get("id") == chat_container.get("id"):
-            continue
-        static_elements.append(_render_component(c, input_id=input_id, send_id=send_id))
-
-    if chat_container:
-        cx = chat_container.get("x", 0)
-        cy = chat_container.get("y", 0)
-        cw = chat_container.get("w", 390)
-        ch = chat_container.get("h", 500)
-        cbg = chat_container.get("bg", "#111")
-        cradius = chat_container.get("radius", 0)
-        chat_style = (
-            f"position:absolute;"
-            f"left:{cx}px;"
-            f"top:{cy}px;"
-            f"width:{cw}px;"
-            f"height:{ch}px;"
-            f"background:{cbg};"
-            f"border-radius:{cradius}px;"
-            f"display:flex;"
-            f"flex-direction:column;"
-            f"overflow:hidden;"
-            f"box-sizing:border-box;"
-        )
-    else:
-        chat_style = (
-            "position:absolute;"
-            "left:50%;top:50%;"
-            "transform:translate(-50%,-50%);"
-            "width:360px;height:520px;"
-            "background:#1a1a1f;"
-            "border-radius:12px;"
-            "display:flex;"
-            "flex-direction:column;"
-            "overflow:hidden;"
-        )
+    assistant_bg = _color_prop(ui_state, ("Bubble",), "bg", "rgba(255,255,255,0.08)")
+    assistant_color = _color_prop(ui_state, ("Bubble",), "color", "#ffffff")
+    user_bg = _color_prop(ui_state, ("Button",), "bg", "#5b7fff")
+    user_color = _color_prop(ui_state, ("Button",), "color", "#ffffff")
+    input_bg = _color_prop(ui_state, ("Prompt", "TextField"), "bg", "#111113")
+    input_color = _color_prop(ui_state, ("Prompt", "TextField"), "color", "#ccccd8")
 
     html = f'''<!doctype html>
 <html lang="ru">
@@ -648,41 +607,50 @@ def preview_project(project_id: int):
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{_esc(project.name)} · Превью</title>
   <style>
-    body {{ margin:0; background:#0c0c0e; font-family:system-ui,sans-serif; overflow:hidden; }}
-    #artboard {{ position:relative; width:100%; height:100vh; overflow:hidden; }}
-    .msg-user {{ align-self:flex-end; background:#5b7fff; color:#fff; padding:8px 12px; border-radius:12px 12px 2px 12px; font-size:12px; max-width:80%; line-height:1.45; white-space:pre-wrap; }}
-    .msg-assistant {{ align-self:flex-start; background:rgba(255,255,255,0.08); color:#fff; padding:8px 12px; border-radius:12px 12px 12px 2px; font-size:12px; max-width:85%; line-height:1.45; white-space:pre-wrap; }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin:0; background:#0c0c0e; font-family:system-ui,sans-serif; height:100vh; overflow:hidden; display:flex; align-items:center; justify-content:center; }}
+    #device {{ width:{AB_W}px; height:{AB_H}px; background:#1a1a1f; border:1px solid #272730; border-radius:12px; position:relative; overflow:hidden; display:flex; flex-direction:column; }}
+    #ui-layer {{ position:absolute; inset:0; overflow:hidden; z-index:1; }}
+    .ui-static {{ position:absolute; display:flex; align-items:center; justify-content:center; font-size:12px; overflow:hidden; }}
+    #messages-layer {{ position:absolute; top:0; left:0; right:0; bottom:56px; overflow-y:auto; display:flex; flex-direction:column; justify-content:flex-end; padding:12px; gap:8px; z-index:2; pointer-events:none; }}
+    .msg {{ max-width:85%; padding:8px 12px; border-radius:12px; font-size:12px; line-height:1.45; white-space:pre-wrap; pointer-events:auto; }}
+    .msg-user {{ align-self:flex-end; background:{user_bg}; color:{user_color}; border-radius:12px 12px 2px 12px; }}
+    .msg-assistant {{ align-self:flex-start; background:{assistant_bg}; color:{assistant_color}; border-radius:12px 12px 12px 2px; }}
     .msg-system {{ align-self:center; color:#888; font-size:11px; padding:4px 0; }}
+    #chat-form {{ position:absolute; bottom:0; left:0; right:0; height:56px; background:#141417; border-top:1px solid #1c1c22; display:flex; align-items:center; gap:8px; padding:0 12px; z-index:3; }}
+    #chat-input {{ flex:1; background:{input_bg}; border:1px solid #272730; border-radius:8px; padding:0 12px; height:36px; color:{input_color}; outline:none; font-size:13px; }}
+    #chat-send {{ background:{user_bg}; border:none; border-radius:8px; width:36px; height:36px; color:{user_color}; cursor:pointer; font-size:14px; }}
+    #chat-send:disabled {{ opacity:0.5; cursor:not-allowed; }}
   </style>
 </head>
 <body>
-  <div id="artboard">
-    {''.join(static_elements)}
-    <div id="chat-container" style="{chat_style}">
-      <div id="chat-messages" style="flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:8px;"></div>
-    </div>
+  <div id="device">
+    <div id="ui-layer">{''.join(static_elements)}</div>
+    <div id="messages-layer"></div>
+    <form id="chat-form" style="position:absolute; bottom:0; left:0; right:0; height:56px; background:#141417; border-top:1px solid #1c1c22; display:flex; align-items:center; gap:8px; padding:0 12px; z-index:3; margin:0;">
+      <input id="chat-input" type="text" placeholder="Введите сообщение..." autocomplete="off" />
+      <button id="chat-send" type="submit">→</button>
+    </form>
   </div>
   <script>
     const sessionId = "preview-" + Math.random().toString(36).slice(2);
     const messages = [];
-    const container = document.getElementById("chat-messages");
+    const container = document.getElementById("messages-layer");
     const input = document.getElementById("chat-input");
     const sendBtn = document.getElementById("chat-send");
 
     function addMessage(text, role) {{
       const div = document.createElement("div");
-      div.className = role === "user" ? "msg-user" : role === "assistant" ? "msg-assistant" : "msg-system";
+      div.className = role === "user" ? "msg msg-user" : role === "assistant" ? "msg msg-assistant" : "msg msg-system";
       div.textContent = text;
       container.appendChild(div);
       container.scrollTop = container.scrollHeight;
+      return div;
     }}
 
     function setInput(enabled) {{
       if (input) input.disabled = !enabled;
-      if (sendBtn) {{
-        sendBtn.disabled = !enabled;
-        sendBtn.style.opacity = enabled ? "1" : "0.5";
-      }}
+      if (sendBtn) sendBtn.disabled = !enabled;
     }}
 
     async function sendMessage(text) {{
@@ -691,10 +659,7 @@ def preview_project(project_id: int):
       messages.push({{role:"user", content:text}});
       if (input) input.value = "";
       setInput(false);
-      const assistantEl = document.createElement("div");
-      assistantEl.className = "msg-assistant";
-      container.appendChild(assistantEl);
-      container.scrollTop = container.scrollHeight;
+      const assistantEl = addMessage("Обрабатываю запрос...", "assistant");
 
       try {{
         const res = await fetch("/api/chat", {{
@@ -703,6 +668,7 @@ def preview_project(project_id: int):
           body: JSON.stringify({{messages: messages, session_id: sessionId}})
         }});
         if (!res.ok) throw new Error("Ошибка сети " + res.status);
+        if (!res.body) throw new Error("Пустое тело ответа");
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let reply = "";
@@ -727,26 +693,33 @@ def preview_project(project_id: int):
         }}
         messages.push({{role:"assistant", content: reply}});
       }} catch (e) {{
-        assistantEl.textContent = "Ошибка: " + e.message;
+        const msg = e && e.message ? e.message : String(e);
+        console.error("sendMessage failed", e);
+        assistantEl.textContent = "Ошибка: " + msg;
       }} finally {{
         setInput(true);
         if (input) input.focus();
       }}
     }}
 
-    if (sendBtn) sendBtn.addEventListener("click", () => sendMessage(input ? input.value : ""));
-    if (input) input.addEventListener("keydown", (e) => {{
-      if (e.key === "Enter" && !e.shiftKey) {{
+    const form = document.getElementById("chat-form");
+    if (form) {{
+      form.addEventListener("submit", (e) => {{
         e.preventDefault();
-        sendMessage(input.value);
-      }}
-    }});
+        sendMessage(input ? input.value : "");
+      }});
+    }}
 
     document.querySelectorAll(".quick-reply").forEach(btn => {{
       btn.addEventListener("click", () => sendMessage(btn.dataset.text || btn.textContent));
     }});
 
+    window.addEventListener("error", (e) => {{
+      addMessage("JS ошибка: " + (e.message || "unknown"), "system");
+    }});
+
     addMessage("Ассистент готов к диалогу", "system");
+    if (input) input.focus();
   </script>
 </body>
 </html>'''

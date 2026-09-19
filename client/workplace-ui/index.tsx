@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react"
 import { C } from "@/theme"
-import { EXT_MARK, type RunState, type Toast, type UIChange } from "@/types"
+import { EXT_MARK, type RunState, type Toast, type UIChange, type Msg, initMessages } from "@/types"
 import { changesApi } from "@/api"
 import type { PlacedComp } from "../ui-kit/constants"
 import ToastBanner from "./ToastBanner"
@@ -18,11 +18,11 @@ export default function WorkplaceUI() {
   const [runState, setRunState] = useState<RunState>("idle")
   const [toast, setToast] = useState<Toast>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [previewOpen, setPreviewOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [changes, setChanges] = useState<UIChange[]>([])
   const [changesLoading, setChangesLoading] = useState(false)
   const [restoredState, setRestoredState] = useState<PlacedComp[] | null>(null)
+  const [msgs, setMsgs] = useState<Msg[]>(initMessages)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function showToast(t: Toast) {
@@ -91,13 +91,11 @@ export default function WorkplaceUI() {
         activeFile={activeFile}
         runState={runState}
         settingsOpen={settingsOpen}
-        previewOpen={previewOpen}
         historyOpen={historyOpen}
         projectId={activeProjectId}
         onCheck={handleCheck}
         onRun={handleRun}
         onSettings={() => setSettingsOpen((o) => !o)}
-        onPreviewToggle={() => setPreviewOpen((o) => !o)}
         onHistoryToggle={() => setHistoryOpen((o) => !o)}
       />
       <Sidebar
@@ -192,7 +190,11 @@ export default function WorkplaceUI() {
           }}
         />
       ) : (
-        <LLMPanel projectId={activeProjectId} />
+        <LLMPanel
+          projectId={activeProjectId}
+          messages={msgs}
+          setMessages={setMsgs}
+        />
       )}
     </div>
   )

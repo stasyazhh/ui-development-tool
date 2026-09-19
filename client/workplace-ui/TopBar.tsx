@@ -6,25 +6,21 @@ export default function TopBar({
   activeFile,
   runState,
   settingsOpen,
-  previewOpen,
   historyOpen,
   projectId,
   onCheck,
   onRun,
   onSettings,
-  onPreviewToggle,
   onHistoryToggle,
 }: {
   activeFile: string
   runState: RunState
   settingsOpen: boolean
-  previewOpen: boolean
   historyOpen: boolean
   projectId: number | null
   onCheck: () => void
   onRun: () => void
   onSettings: () => void
-  onPreviewToggle: () => void
   onHistoryToggle: () => void
 }) {
   return (
@@ -83,8 +79,8 @@ export default function TopBar({
           style={{ width: 1, height: 18, background: C.b2, margin: "0 2px" }}
         />
         <TbBtn
-          label={previewOpen ? "Превью" : "Превью"}
-          active={previewOpen}
+          label="Превью"
+          active={false}
           onClick={() => {
             if (projectId !== null) {
               window.open(
@@ -92,7 +88,6 @@ export default function TopBar({
                 "_blank",
               )
             }
-            onPreviewToggle()
           }}
         />
         <TbBtn

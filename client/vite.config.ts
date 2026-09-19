@@ -17,6 +17,12 @@ export default defineConfig(({ mode }) => {
     build: {
       sourcemap: emitSourcemaps ? "inline" : false,
       minify: !emitSourcemaps,
+      rollupOptions: {
+        input: {
+          main: path.resolve("index.html"),
+          preview: path.resolve("preview.html"),
+        },
+      },
     },
     plugins: [
       react(),
@@ -25,6 +31,7 @@ export default defineConfig(({ mode }) => {
       figmaErrorOverlayReplay(),
       figmaReactRefreshBoundaryFallback(),
       figmaMakeKitPlugin({ storiesGlob: "/src/**/*.stories.{ts,tsx,js,jsx}" }),
+      previewRoutePlugin(),
     ],
     resolve: {
       alias: {
@@ -364,6 +371,39 @@ function figmaReactRefreshBoundaryFallback(): Plugin {
  * builds (`vite build`) skip it entirely so the route doesn't leak
  * into shipped bundles.
  */
+function previewRoutePlugin(): Plugin {
+  const ROUTE = /^\/preview\/\d+/
+  const HTML_BOOTSTRAP = `<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Preview</title>
+</head>
+<body>
+<div id="root"></div>
+<script type="module" src="/preview/main.tsx"></script>
+</body>
+</html>`
+
+  return {
+    name: "preview-route",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url || !ROUTE.test(req.url.split("?")[0])) return next()
+
+        try {
+          res.setHeader("Content-Type", "text/html")
+          res.end(await server.transformIndexHtml(req.url, HTML_BOOTSTRAP))
+        } catch (err) {
+          next(err as Error)
+        }
+      })
+    },
+  }
+}
+
 function figmaMakeKitPlugin(options: {
   storiesGlob: string | string[]
 }): Plugin {
