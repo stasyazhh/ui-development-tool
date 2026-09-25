@@ -700,10 +700,18 @@ def preview_project(project_id: int):
     const input = document.getElementById("chat-input");
     const sendBtn = document.getElementById("chat-send");
 
+    function formatMarkdown(text) {{
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\\*\\*(.+?)\\*\\*/g, "<b>$1</b>");
+    }}
+
     function addMessage(text, role) {{
       const div = document.createElement("div");
       div.className = role === "user" ? "msg msg-user" : role === "assistant" ? "msg msg-assistant" : "msg msg-system";
-      div.textContent = text;
+      div.innerHTML = formatMarkdown(text);
       container.appendChild(div);
       container.scrollTop = container.scrollHeight;
       return div;
@@ -746,7 +754,7 @@ def preview_project(project_id: int):
               if (parsed.error) throw new Error(parsed.error);
               if (parsed.content) {{
                 reply += parsed.content;
-                assistantEl.textContent = reply;
+                assistantEl.innerHTML = formatMarkdown(reply);
                 container.scrollTop = container.scrollHeight;
               }}
             }} catch {{}}

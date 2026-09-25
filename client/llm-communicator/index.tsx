@@ -2,29 +2,55 @@ import { useState, useRef, useEffect, type KeyboardEvent } from "react"
 import { C } from "@/theme"
 import type { Msg } from "@/types"
 
-
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api"
 
 function renderText(text: string) {
-  return text.split("`").map((part, i) =>
-    i % 2 === 1 ? (
-      <code
-        key={i}
-        style={{
-          fontFamily: C.mono,
-          fontSize: 11,
-          color: C.acc,
-          background: C.accA,
-          padding: "1px 4px",
-          borderRadius: 2,
-        }}
-      >
-        {part}
-      </code>
-    ) : (
-      part
-    ),
-  )
+  const tokens: Array<{ type: "text" | "bold" | "code" content: string }> = []
+  const regex = /\*\*(.+?)\*\*|`([^`]+)`/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      tokens.push({ type: "text", content: text.slice(lastIndex, match.index) })
+    }
+    if (match[1] !== undefined) {
+      tokens.push({ type: "bold", content: match[1] })
+    } else if (match[2] !== undefined) {
+      tokens.push({ type: "code", content: match[2] })
+    }
+    lastIndex = regex.lastIndex
+  }
+  if (lastIndex < text.length) {
+    tokens.push({ type: "text", content: text.slice(lastIndex) })
+  }
+
+  return tokens.map((token, i) => {
+    if (token.type === "bold") {
+      return (
+        <b key={i} style={{ fontWeight: 700 }}>
+          {token.content}
+        </b>
+      )
+    }
+    if (token.type === "code") {
+      return (
+        <code
+          key={i}
+          style={{
+            fontFamily: C.mono,
+            fontSize: 11,
+            color: C.acc,
+            background: C.accA,
+            padding: "1px 4px",
+            borderRadius: 2,
+          }}
+        >
+          {token.content}
+        </code>
+      )
+    }
+    return <span key={i}>{token.content}</span>
+  })
 }
 
 export default function LLMPanel({
@@ -120,7 +146,6 @@ export default function LLMPanel({
         }
         return next
       })
-
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Ошибка сети"
       setError(msg)

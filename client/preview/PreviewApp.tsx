@@ -15,6 +15,14 @@ function parseProjectId(): number | null {
   return isNaN(id) ? null : id
 }
 
+function formatMarkdown(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+}
+
 export default function PreviewApp() {
   const [projectId] = useState<number | null>(parseProjectId)
   const [device, setDevice] = useState<Device>("mobile")
@@ -42,9 +50,7 @@ export default function PreviewApp() {
 
   const assistantBg = bubbleProps?.bg ?? C.s2
   const assistantColor = bubbleProps?.color ?? C.t1
-  const assistantBorder = bubbleProps?.color
-    ? `${bubbleProps.color}55`
-    : C.b1
+  const assistantBorder = bubbleProps?.color ? `${bubbleProps.color}55` : C.b1
   const userBg = buttonProps?.bg ?? C.acc
   const userColor = buttonProps?.color ?? "#fff"
   const inputBg = promptProps?.bg ?? C.s1
@@ -438,7 +444,9 @@ export default function PreviewApp() {
                           m.role === "user" ? "flex-end" : "flex-start",
                         background: m.role === "user" ? userBg : assistantBg,
                         border:
-                          m.role === "user" ? "none" : `1px solid ${assistantBorder}`,
+                          m.role === "user"
+                            ? "none"
+                            : `1px solid ${assistantBorder}`,
                         borderRadius: 2,
                         padding: "6px 10px",
                         fontSize: 11,
@@ -449,7 +457,11 @@ export default function PreviewApp() {
                         whiteSpace: "pre-wrap",
                       }}
                     >
-                      {m.text}
+                      <span
+                        dangerouslySetInnerHTML={{
+                          __html: formatMarkdown(m.text),
+                        }}
+                      />
                     </div>
                   ))}
                   <div ref={bottomRef} />
@@ -502,7 +514,7 @@ export default function PreviewApp() {
                 outline: "none",
               }}
             />
-              <button
+            <button
               onClick={send}
               disabled={busy}
               style={{
