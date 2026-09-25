@@ -1,6 +1,12 @@
 import { useState, useRef, useEffect } from "react"
 import { C } from "@/theme"
-import { EXT_MARK, type RunState, type Toast, type UIChange, type Msg, initMessages } from "@/types"
+import {
+  EXT_MARK,
+  type Toast,
+  type UIChange,
+  type Msg,
+  initMessages,
+} from "@/types"
 import { changesApi } from "@/api"
 import type { PlacedComp } from "../ui-kit/constants"
 import ToastBanner from "./ToastBanner"
@@ -15,7 +21,6 @@ import ChangesPanel from "../changes-panel"
 export default function WorkplaceUI() {
   const [activeProjectId, setActiveProjectId] = useState<number | null>(null)
   const [activeFile, setActiveFile] = useState("chat-tutor.ui")
-  const [runState, setRunState] = useState<RunState>("idle")
   const [toast, setToast] = useState<Toast>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -32,32 +37,18 @@ export default function WorkplaceUI() {
   }
 
   function handleCheck() {
-    if (runState !== "idle") return
-    setRunState("checking")
-    setTimeout(() => {
-      setRunState("idle")
-      showToast({
-        text: "Проверка завершена: 4 компонента, 0 ошибок, 1 предупреждение (Typing.visible не привязан)",
-        kind: "warn",
-      })
-    }, 1600)
+    showToast({
+      text: "Проверка завершена: 4 компонента, 0 ошибок, 1 предупреждение (Typing.visible не привязан)",
+      kind: "warn",
+    })
   }
 
   function handleRun() {
-    if (runState === "running") {
-      setRunState("idle")
-      showToast({ text: "Сборка остановлена", kind: "warn" })
+    if (activeProjectId === null) {
+      showToast({ text: "Выберите проект для запуска", kind: "warn" })
       return
     }
-    if (runState !== "idle") return
-    setRunState("running")
-    setTimeout(() => {
-      setRunState("idle")
-      showToast({
-        text: "Сборка успешна — chat-tutor.ui развёрнут на localhost:3000",
-        kind: "ok",
-      })
-    }, 2400)
+    window.open(`http://localhost:8000/preview/${activeProjectId}`, "_blank")
   }
 
   useEffect(() => {
@@ -88,11 +79,8 @@ export default function WorkplaceUI() {
       <ToastBanner toast={toast} />
       {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
       <TopBar
-        activeFile={activeFile}
-        runState={runState}
         settingsOpen={settingsOpen}
         historyOpen={historyOpen}
-        projectId={activeProjectId}
         onCheck={handleCheck}
         onRun={handleRun}
         onSettings={() => setSettingsOpen((o) => !o)}
@@ -158,12 +146,19 @@ export default function WorkplaceUI() {
                 if (activeProjectId === null) return
                 setChangesLoading(true)
                 try {
-                  const { changes: list } = await changesApi.list(activeProjectId)
+                  const { changes: list } =
+                    await changesApi.list(activeProjectId)
                   setChanges(list)
-                  showToast({ text: "Сохранение добавлено в историю", kind: "ok" })
+                  showToast({
+                    text: "Сохранение добавлено в историю",
+                    kind: "ok",
+                  })
                 } catch (e) {
                   showToast({
-                    text: e instanceof Error ? e.message : "Ошибка обновления истории",
+                    text:
+                      e instanceof Error
+                        ? e.message
+                        : "Ошибка обновления истории",
                     kind: "err",
                   })
                 } finally {
@@ -172,7 +167,6 @@ export default function WorkplaceUI() {
               }}
             />
           </div>
-
         </div>
       </div>
 

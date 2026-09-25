@@ -577,6 +577,63 @@ def _find_chat_input_ids(state: list) -> set:
     return ids
 
 
+def _is_large_background(c: dict) -> bool:
+    if c.get("type") not in ("Container", "Row", "Column", "Card"):
+        return False
+    w = int(c.get("w", 0))
+    h = int(c.get("h", 0))
+    return w >= AB_W * 0.85 and h >= AB_H * 0.4
+
+
+def _find_content_bounds(state: list) -> tuple[int, int]:
+    """Return (header_bottom, footer_top) in device-relative coordinates."""
+    dialog_types = {"Bubble", "Typing", "QuickReply", "Prompt"}
+    chat_input_ids = _find_chat_input_ids(state)
+    static = [
+        c for c in state
+        if c.get("type") not in dialog_types and c.get("id") not in chat_input_ids
+    ]
+    if not static:
+        return (0, AB_H)
+
+    boxes = []
+    for c in static:
+        y = int(c.get("y", 0)) - AB_Y
+        h = max(20, int(c.get("h", 40)))
+        # Ignore full-screen or large content-background containers.
+        if _is_large_background(c):
+            continue
+        boxes.append((y, y + h))
+
+    if not boxes:
+        return (0, AB_H)
+
+    boxes.sort(key=lambda b: b[0])
+    header_bottom = boxes[0][1]
+    for y, bottom in boxes[1:]:
+        if y - header_bottom <= 20:
+            header_bottom = max(header_bottom, bottom)
+        else:
+            break
+
+    # Cap the header so tall nearby content cards are not treated as header.
+    max_header_bottom = AB_H // 4
+    header_bottom = min(header_bottom, max_header_bottom)
+
+    boxes_by_bottom = sorted(boxes, key=lambda b: b[1], reverse=True)
+    footer_top = boxes_by_bottom[0][0]
+    for y, bottom in boxes_by_bottom[1:]:
+        if footer_top - bottom <= 20:
+            footer_top = min(footer_top, y)
+        else:
+            break
+
+    if header_bottom >= footer_top:
+        return (0, AB_H)
+
+    return (max(0, header_bottom), min(AB_H, footer_top))
+
+
 @app.get("/preview/{project_id}")
 def preview_project(project_id: int):
     project = manager.get_project_by_id(project_id)
@@ -592,6 +649,10 @@ def preview_project(project_id: int):
         for c in ui_state
         if c.get("type") not in dialog_types and c.get("id") not in chat_input_ids
     ]
+
+    header_bottom, footer_top = _find_content_bounds(ui_state)
+    messages_top = max(0, header_bottom)
+    messages_bottom = max(56, AB_H - footer_top)
 
     assistant_bg = _color_prop(ui_state, ("Bubble",), "bg", "rgba(255,255,255,0.08)")
     assistant_color = _color_prop(ui_state, ("Bubble",), "color", "#ffffff")
@@ -612,7 +673,7 @@ def preview_project(project_id: int):
     #device {{ width:{AB_W}px; height:{AB_H}px; background:#1a1a1f; border:1px solid #272730; border-radius:12px; position:relative; overflow:hidden; display:flex; flex-direction:column; }}
     #ui-layer {{ position:absolute; inset:0; overflow:hidden; z-index:1; }}
     .ui-static {{ position:absolute; display:flex; align-items:center; justify-content:center; font-size:12px; overflow:hidden; }}
-    #messages-layer {{ position:absolute; top:0; left:0; right:0; bottom:56px; overflow-y:auto; display:flex; flex-direction:column; justify-content:flex-end; padding:12px; gap:8px; z-index:2; pointer-events:none; }}
+    #messages-layer {{ position:absolute; top:{messages_top}px; left:0; right:0; bottom:{messages_bottom}px; overflow-y:auto; display:flex; flex-direction:column; justify-content:flex-end; padding:12px; gap:8px; z-index:2; pointer-events:none; }}
     .msg {{ max-width:85%; padding:8px 12px; border-radius:12px; font-size:12px; line-height:1.45; white-space:pre-wrap; pointer-events:auto; }}
     .msg-user {{ align-self:flex-end; background:{user_bg}; color:{user_color}; border-radius:12px 12px 2px 12px; }}
     .msg-assistant {{ align-self:flex-start; background:{assistant_bg}; color:{assistant_color}; border-radius:12px 12px 12px 2px; }}

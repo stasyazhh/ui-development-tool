@@ -1,23 +1,16 @@
 import { C } from "@/theme"
-import type { RunState } from "@/types"
 import TbBtn from "./TbBtn"
 
 export default function TopBar({
-  activeFile,
-  runState,
   settingsOpen,
   historyOpen,
-  projectId,
   onCheck,
   onRun,
   onSettings,
   onHistoryToggle,
 }: {
-  activeFile: string
-  runState: RunState
   settingsOpen: boolean
   historyOpen: boolean
-  projectId: number | null
   onCheck: () => void
   onRun: () => void
   onSettings: () => void
@@ -38,63 +31,13 @@ export default function TopBar({
     >
       <div style={{ flex: 1 }} />
 
-      {runState === "checking" && (
-        <span
-          style={{
-            fontSize: 11,
-            fontFamily: C.mono,
-            color: C.ora,
-            marginRight: 12,
-          }}
-        >
-          ⏳ проверка...
-        </span>
-      )}
-      {runState === "running" && (
-        <span
-          style={{
-            fontSize: 11,
-            fontFamily: C.mono,
-            color: C.grn,
-            marginRight: 12,
-          }}
-        >
-          ● сборка...
-        </span>
-      )}
-
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <TbBtn
-          label="Проверить"
-          active={runState === "checking"}
-          onClick={onCheck}
-        />
-        <TbBtn
-          label={runState === "running" ? "◼  Стоп" : "▷  Запуск"}
-          accent
-          active={runState === "running"}
-          onClick={onRun}
-        />
+        <TbBtn label="Проверить" onClick={onCheck} />
+        <TbBtn label="▷  Запуск" accent onClick={onRun} />
         <div
           style={{ width: 1, height: 18, background: C.b2, margin: "0 2px" }}
         />
-        <TbBtn
-          label="Превью"
-          active={false}
-          onClick={() => {
-            if (projectId !== null) {
-              window.open(
-                `http://localhost:8000/preview/${projectId}`,
-                "_blank",
-              )
-            }
-          }}
-        />
-        <TbBtn
-          label="История"
-          active={historyOpen}
-          onClick={onHistoryToggle}
-        />
+        <TbBtn label="История" active={historyOpen} onClick={onHistoryToggle} />
         <div
           style={{ width: 1, height: 18, background: C.b2, margin: "0 2px" }}
         />
