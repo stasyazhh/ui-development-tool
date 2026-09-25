@@ -16,6 +16,7 @@ import {
 import CompPreview from "./CompPreview"
 import PropRow from "./PropRow"
 import { uiStateApi, changesApi } from "@/api"
+import { renderPlacedHTML } from "./renderHTML"
 
 const inputStyle = {
   width: 60,
@@ -66,7 +67,9 @@ function PropInputRow({
       <input
         type={type}
         value={value}
-        onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
+        onChange={(e: ChangeEvent<HTMLInputElement>) =>
+          onChange(e.target.value)
+        }
         style={inputStyle}
       />
     </div>
@@ -311,7 +314,8 @@ export default function VisualConstructor({
     setSaving(true)
     try {
       const selected = placed.filter((c) => selSet.has(c.id))
-      await changesApi.create(projectId, "", selected)
+      const html = renderPlacedHTML(selected)
+      await changesApi.create(projectId, html, selected)
       onSave?.()
     } catch {
       // ignore
@@ -324,7 +328,8 @@ export default function VisualConstructor({
     if (projectId === null || placed.length === 0) return
     setSavingAll(true)
     try {
-      await changesApi.create(projectId, "", placed)
+      const html = renderPlacedHTML(placed)
+      await changesApi.create(projectId, html, placed)
       onSave?.()
     } catch {
       // ignore
@@ -737,7 +742,11 @@ export default function VisualConstructor({
               value={firstSel.w ?? ""}
               onChange={(v) => {
                 const n = parseInt(v, 10)
-                updateProp(firstSel.id, "w", isNaN(n) ? undefined : Math.max(20, n))
+                updateProp(
+                  firstSel.id,
+                  "w",
+                  isNaN(n) ? undefined : Math.max(20, n),
+                )
               }}
             />
             <PropInputRow
@@ -746,7 +755,11 @@ export default function VisualConstructor({
               value={firstSel.h ?? ""}
               onChange={(v) => {
                 const n = parseInt(v, 10)
-                updateProp(firstSel.id, "h", isNaN(n) ? undefined : Math.max(20, n))
+                updateProp(
+                  firstSel.id,
+                  "h",
+                  isNaN(n) ? undefined : Math.max(20, n),
+                )
               }}
             />
             <PropColorRow
@@ -765,7 +778,11 @@ export default function VisualConstructor({
               value={firstSel.radius ?? ""}
               onChange={(v) => {
                 const n = parseInt(v, 10)
-                updateProp(firstSel.id, "radius", isNaN(n) ? undefined : Math.max(0, n))
+                updateProp(
+                  firstSel.id,
+                  "radius",
+                  isNaN(n) ? undefined : Math.max(0, n),
+                )
               }}
             />
             <PropInputRow
@@ -777,14 +794,8 @@ export default function VisualConstructor({
         ) : paletteSel ? (
           <>
             <PropRow label="type" value={paletteSel} />
-            <PropRow
-              label="width"
-              value={`${defaultProps(paletteSel).w}px`}
-            />
-            <PropRow
-              label="height"
-              value={`${defaultProps(paletteSel).h}px`}
-            />
+            <PropRow label="width" value={`${defaultProps(paletteSel).w}px`} />
+            <PropRow label="height" value={`${defaultProps(paletteSel).h}px`} />
             <PropRow label="color" value={defaultProps(paletteSel).color} />
             <PropRow label="bg" value={defaultProps(paletteSel).bg} />
             <div
@@ -821,11 +832,11 @@ export default function VisualConstructor({
           style={{
             margin: 12,
             padding: "8px 12px",
-            background: projectId === null || placed.length === 0 ? C.s2 : C.grn,
+            background:
+              projectId === null || placed.length === 0 ? C.s2 : C.grn,
             border: "none",
             borderRadius: 4,
-            color:
-              projectId === null || placed.length === 0 ? C.t3 : "#fff",
+            color: projectId === null || placed.length === 0 ? C.t3 : "#fff",
             fontFamily: C.sans,
             fontSize: 12,
             fontWeight: 500,

@@ -10,7 +10,7 @@ export default function Sidebar({
 }: {
   selected: string
   onSelect: (id: string) => void
-  onProjectChange?: (projectId: number) => void
+  onProjectChange?: (projectId: number | null) => void
 }) {
   const [projects, setProjects] = useState<ApiProject[]>([])
   const [activeProjectId, setActiveProjectId] = useState<number | null>(null)
@@ -22,6 +22,7 @@ export default function Sidebar({
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [hoveredId, setHoveredId] = useState<number | null>(null)
 
   const loadProjects = useCallback(async () => {
     setLoading(true)
@@ -47,9 +48,12 @@ export default function Sidebar({
 
   useEffect(() => {
     if (activeProjectId === null) return
-    filesApi.list(activeProjectId).then(({ files }) => setFiles(files)).catch((e) => {
-      setError(e instanceof Error ? e.message : "Ошибка загрузки файлов")
-    })
+    filesApi
+      .list(activeProjectId)
+      .then(({ files }) => setFiles(files))
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : "Ошибка загрузки файлов")
+      })
   }, [activeProjectId])
 
   async function handleCreateProject() {
@@ -62,6 +66,37 @@ export default function Sidebar({
       onProjectChange?.(project.id)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка создания проекта")
+    }
+  }
+
+  async function handleRenameProject(project: ApiProject) {
+    const name = prompt("Новое название проекта:", project.name)
+    if (!name?.trim() || name.trim() === project.name) return
+    try {
+      const updated = await projectsApi.update(project.id, name.trim())
+      setProjects((prev) =>
+        prev.map((p) => (p.id === updated.id ? updated : p)),
+      )
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка переименования проекта")
+    }
+  }
+
+  async function handleDeleteProject(project: ApiProject) {
+    if (!confirm(`Удалить проект «${project.name}»?`)) return
+    try {
+      await projectsApi.remove(project.id)
+      setProjects((prev) => {
+        const next = prev.filter((p) => p.id !== project.id)
+        if (activeProjectId === project.id) {
+          const fallback = next[0] ?? null
+          setActiveProjectId(fallback?.id ?? null)
+          onProjectChange?.(fallback?.id ?? null)
+        }
+        return next
+      })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка удаления проекта")
     }
   }
 
@@ -128,35 +163,106 @@ export default function Sidebar({
       )}
 
       <div style={{ flex: 1, overflowY: "auto", paddingBottom: 8 }}>
-        {projects.map((project) => (
-          <button
-            key={project.id}
-            onClick={() => {
-              setActiveProjectId(project.id)
-              onProjectChange?.(project.id)
-            }}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              width: "100%",
-              background:
-                activeProjectId === project.id ? C.accA : "transparent",
-              border: "none",
-              borderLeft: `2px solid ${
-                activeProjectId === project.id ? C.acc : "transparent"
-              }`,
-              padding: "6px 14px",
-              fontSize: 12,
-              fontWeight: 600,
-              color: activeProjectId === project.id ? C.t1 : C.t2,
-              fontFamily: C.sans,
-              textAlign: "left",
-              cursor: "pointer",
-            }}
-          >
-            {project.name}
-          </button>
-        ))}
+        {projects.map((project) => {
+          const isActive = activeProjectId === project.id
+          const showActions = isActive || hoveredId === project.id
+
+          return (
+            <div
+              key={project.id}
+              onMouseEnter={() => setHoveredId(project.id)}
+              onMouseLeave={() =>
+                setHoveredId((id) => (id === project.id ? null : id))
+              }
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                width: "100%",
+                background: isActive ? C.accA : "transparent",
+                borderLeft: `2px solid ${isActive ? C.acc : "transparent"}`,
+                padding: "4px 6px 4px 14px",
+              }}
+            >
+              <button
+                onClick={() => {
+                  setActiveProjectId(project.id)
+                  onProjectChange?.(project.id)
+                }}
+                title={project.name}
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  background: "none",
+                  border: "none",
+                  padding: "2px 0",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: isActive ? C.t1 : C.t2,
+                  fontFamily: C.sans,
+                  textAlign: "left",
+                  cursor: "pointer",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {project.name}
+              </button>
+
+              {showActions && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 2,
+                    flexShrink: 0,
+                  }}
+                >
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleRenameProject(project)
+                    }}
+                    title="Переименовать"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: isActive ? C.t1 : C.t2,
+                      fontSize: 11,
+                      padding: "2px 4px",
+                      cursor: "pointer",
+                      lineHeight: 1,
+                      opacity: 0.8,
+                    }}
+                  >
+                    ✎
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDeleteProject(project)
+                    }}
+                    title="Удалить"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#e05555",
+                      fontSize: 11,
+                      padding: "2px 4px",
+                      cursor: "pointer",
+                      lineHeight: 1,
+                      opacity: 0.8,
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+            </div>
+          )
+        })}
 
         {activeProjectId !== null && files.length > 0 && (
           <div
@@ -167,83 +273,86 @@ export default function Sidebar({
             }}
           >
             {files.map((folder) => (
-          <div key={folder.id}>
-            <button
-              onClick={() =>
-                setOpen((o) => ({ ...o, [folder.id]: !o[folder.id] }))
-              }
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 5,
-                width: "100%",
-                background: "none",
-                border: "none",
-                padding: "4px 14px",
-                fontSize: 11.5,
-                color: C.t2,
-                fontFamily: C.sans,
-                textAlign: "left",
-                cursor: "pointer",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 9,
-                  display: "inline-block",
-                  transition: "transform .12s",
-                  transform: open[folder.id]
-                    ? "rotate(0deg)"
-                    : "rotate(-90deg)",
-                  color: C.t3,
-                }}
-              >
-                ▾
-              </span>
-              <span>{folder.name}</span>
-            </button>
-
-            {open[folder.id] &&
-              folder.children?.map((file) => (
+              <div key={folder.id}>
                 <button
-                  key={file.id}
-                  onClick={() => onSelect(file.id)}
+                  onClick={() =>
+                    setOpen((o) => ({ ...o, [folder.id]: !o[folder.id] }))
+                  }
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 6,
+                    gap: 5,
                     width: "100%",
-                    textAlign: "left",
+                    background: "none",
                     border: "none",
-                    borderLeft: `2px solid ${
-                      selected === file.id ? C.acc : "transparent"
-                    }`,
-                    background: selected === file.id ? C.accA : "transparent",
-                    padding: "3px 14px 3px 22px",
-                    fontSize: 12,
+                    padding: "4px 14px",
+                    fontSize: 11.5,
+                    color: C.t2,
                     fontFamily: C.sans,
-                    color: selected === file.id ? C.t1 : C.t2,
+                    textAlign: "left",
                     cursor: "pointer",
                   }}
                 >
-                  <span style={{ fontSize: 10, color: EXT_COLOR[file.type] }}>
-                    {EXT_MARK[file.type]}
+                  <span
+                    style={{
+                      fontSize: 9,
+                      display: "inline-block",
+                      transition: "transform .12s",
+                      transform: open[folder.id]
+                        ? "rotate(0deg)"
+                        : "rotate(-90deg)",
+                      color: C.t3,
+                    }}
+                  >
+                    ▾
                   </span>
-                  <span style={{ flex: 1 }}>{file.name}</span>
-                  {file.modified && (
-                    <span
-                      style={{
-                        width: 5,
-                        height: 5,
-                        borderRadius: "50%",
-                        background: C.ora,
-                        flexShrink: 0,
-                      }}
-                    />
-                  )}
+                  <span>{folder.name}</span>
                 </button>
-              ))}
-          </div>
+
+                {open[folder.id] &&
+                  folder.children?.map((file) => (
+                    <button
+                      key={file.id}
+                      onClick={() => onSelect(file.id)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        width: "100%",
+                        textAlign: "left",
+                        border: "none",
+                        borderLeft: `2px solid ${
+                          selected === file.id ? C.acc : "transparent"
+                        }`,
+                        background:
+                          selected === file.id ? C.accA : "transparent",
+                        padding: "3px 14px 3px 22px",
+                        fontSize: 12,
+                        fontFamily: C.sans,
+                        color: selected === file.id ? C.t1 : C.t2,
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span
+                        style={{ fontSize: 10, color: EXT_COLOR[file.type] }}
+                      >
+                        {EXT_MARK[file.type]}
+                      </span>
+                      <span style={{ flex: 1 }}>{file.name}</span>
+                      {file.modified && (
+                        <span
+                          style={{
+                            width: 5,
+                            height: 5,
+                            borderRadius: "50%",
+                            background: C.ora,
+                            flexShrink: 0,
+                          }}
+                        />
+                      )}
+                    </button>
+                  ))}
+              </div>
             ))}
           </div>
         )}
