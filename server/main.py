@@ -682,6 +682,9 @@ def preview_project(project_id: int):
     #chat-input {{ flex:1; background:{input_bg}; border:1px solid #272730; border-radius:8px; padding:0 12px; height:36px; color:{input_color}; outline:none; font-size:13px; }}
     #chat-send {{ background:{user_bg}; border:none; border-radius:8px; width:36px; height:36px; color:{user_color}; cursor:pointer; font-size:14px; }}
     #chat-send:disabled {{ opacity:0.5; cursor:not-allowed; }}
+    #chat-mic {{ background:#1c1c22; border:1px solid #272730; border-radius:8px; width:36px; height:36px; color:#ccccd8; cursor:pointer; font-size:14px; display:none; }}
+    #chat-mic.recording {{ background:#e05555; color:#fff; border-color:#e05555; }}
+    #chat-mic:disabled {{ opacity:0.5; cursor:not-allowed; }}
   </style>
 </head>
 <body>
@@ -691,6 +694,7 @@ def preview_project(project_id: int):
     <form id="chat-form" style="position:absolute; bottom:0; left:0; right:0; height:56px; background:#141417; border-top:1px solid #1c1c22; display:flex; align-items:center; gap:8px; padding:0 12px; z-index:3; margin:0;">
       <input id="chat-input" type="text" placeholder="Введите сообщение..." autocomplete="off" />
       <button id="chat-send" type="submit">→</button>
+      <button id="chat-mic" type="button" title="Голосовой ввод">🎤</button>
     </form>
   </div>
   <script>
@@ -775,6 +779,7 @@ def preview_project(project_id: int):
     if (form) {{
       form.addEventListener("submit", (e) => {{
         e.preventDefault();
+        if (isRecording) stopRecording();
         sendMessage(input ? input.value : "");
       }});
     }}
@@ -782,6 +787,93 @@ def preview_project(project_id: int):
     document.querySelectorAll(".quick-reply").forEach(btn => {{
       btn.addEventListener("click", () => sendMessage(btn.dataset.text || btn.textContent));
     }});
+
+    const micBtn = document.getElementById("chat-mic");
+    const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+    let isRecording = false;
+    let voiceFinalTranscript = "";
+
+    function updateMicButton() {{
+      if (!micBtn) return;
+      micBtn.textContent = isRecording ? "⏹" : "🎤";
+      micBtn.classList.toggle("recording", isRecording);
+      micBtn.title = isRecording ? "Остановить запись" : "Голосовой ввод";
+    }}
+
+    function stopRecording() {{
+      if (recognition && isRecording) recognition.stop();
+    }}
+
+    function startRecording() {{
+      if (!recognition || !input) return;
+      voiceFinalTranscript = "";
+      input.value = "";
+      recognition.start();
+    }}
+
+    if (SpeechRecognitionAPI && micBtn) {{
+      recognition = new SpeechRecognitionAPI();
+      recognition.lang = "ru-RU";
+      recognition.continuous = false;
+      recognition.interimResults = true;
+
+      recognition.onstart = () => {{
+        isRecording = true;
+        updateMicButton();
+        if (input) input.placeholder = "Слушаю...";
+      }};
+
+      recognition.onend = () => {{
+        isRecording = false;
+        updateMicButton();
+        if (input) input.placeholder = "Введите сообщение...";
+        if (voiceFinalTranscript && input) {{
+          input.value = voiceFinalTranscript;
+          input.focus();
+        }}
+      }};
+
+      recognition.onerror = (e) => {{
+        console.error("Speech recognition error", e);
+        isRecording = false;
+        updateMicButton();
+        if (input) input.placeholder = "Введите сообщение...";
+        const err = e.error || "unknown";
+        if (err === "aborted") return;
+        let detail = err;
+        if (detail === "not-allowed") detail = "нет разрешения на микрофон. Разрешите доступ к микрофону в адресной строке браузера и попробуйте снова";
+        if (detail === "no-speech") detail = "речь не распознана";
+        if (detail === "network") {{
+          detail = "нет связи с сервером распознавания речи. Проверьте подключение и доступность Google-сервисов в вашем регионе";
+        }}
+        if (detail === "service-not-allowed") {{
+          detail = "сервис распознавания речи недоступен в этом браузере/регионе";
+        }}
+        addMessage("Ошибка голосового ввода: " + detail, "system");
+      }};
+
+      recognition.onresult = (e) => {{
+        let interim = "";
+        let final = "";
+        for (let i = e.resultIndex; i < e.results.length; i++) {{
+          const transcript = e.results[i][0].transcript;
+          if (e.results[i].isFinal) {{
+            final += transcript;
+          }} else {{
+            interim += transcript;
+          }}
+        }}
+        voiceFinalTranscript += final;
+        if (input) input.value = voiceFinalTranscript + interim;
+      }};
+
+      micBtn.style.display = "block";
+      micBtn.addEventListener("click", () => {{
+        if (isRecording) stopRecording();
+        else startRecording();
+      }});
+    }}
 
     window.addEventListener("error", (e) => {{
       addMessage("JS ошибка: " + (e.message || "unknown"), "system");

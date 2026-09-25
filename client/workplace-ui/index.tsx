@@ -7,8 +7,9 @@ import {
   type Msg,
   initMessages,
 } from "@/types"
-import { changesApi } from "@/api"
+import { changesApi, uiStateApi } from "@/api"
 import type { PlacedComp } from "../ui-kit/constants"
+import { renderPlacedHTML } from "../ui-kit/renderHTML"
 import ToastBanner from "./ToastBanner"
 import TopBar from "./TopBar"
 import SettingsPanel from "./SettingsPanel"
@@ -27,6 +28,7 @@ export default function WorkplaceUI() {
   const [changes, setChanges] = useState<UIChange[]>([])
   const [changesLoading, setChangesLoading] = useState(false)
   const [restoredState, setRestoredState] = useState<PlacedComp[] | null>(null)
+  const [placedState, setPlacedState] = useState<PlacedComp[]>([])
   const [msgs, setMsgs] = useState<Msg[]>(initMessages)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -49,6 +51,24 @@ export default function WorkplaceUI() {
       return
     }
     window.open(`http://localhost:8000/preview/${activeProjectId}`, "_blank")
+  }
+
+  async function handleApplyState(state: PlacedComp[]) {
+    setRestoredState(state)
+    if (activeProjectId === null) return
+    try {
+      await uiStateApi.update(activeProjectId, state)
+      const html = renderPlacedHTML(state)
+      await changesApi.create(activeProjectId, html, state)
+      const { changes: list } = await changesApi.list(activeProjectId)
+      setChanges(list)
+      showToast({ text: "Интерфейс обновлён ассистентом", kind: "ok" })
+    } catch (e) {
+      showToast({
+        text: e instanceof Error ? e.message : "Ошибка сохранения изменений",
+        kind: "err",
+      })
+    }
   }
 
   useEffect(() => {
@@ -142,6 +162,7 @@ export default function WorkplaceUI() {
             <VisualConstructor
               projectId={activeProjectId}
               restoredState={restoredState}
+              onStateChange={setPlacedState}
               onSave={async () => {
                 if (activeProjectId === null) return
                 setChangesLoading(true)
@@ -188,6 +209,8 @@ export default function WorkplaceUI() {
           projectId={activeProjectId}
           messages={msgs}
           setMessages={setMsgs}
+          currentState={placedState}
+          onApplyState={handleApplyState}
         />
       )}
     </div>

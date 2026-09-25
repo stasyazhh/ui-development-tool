@@ -33,9 +33,12 @@ export default function PreviewApp() {
   const [input, setInput] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isRecording, setIsRecording] = useState(false)
   const canvasRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const sessionId = useRef<string>(`preview-session-${Date.now()}`)
+  const recognitionRef = useRef<any>(null)
+  const voiceFinalRef = useRef("")
 
   const dialogTypes = new Set(["Bubble", "Typing", "QuickReply", "Prompt"])
 
@@ -91,6 +94,7 @@ export default function PreviewApp() {
   }, [messages])
 
   async function send() {
+    if (isRecording) stopRecording()
     const text = input.trim()
     if (!text || busy) return
     const time = new Date().toLocaleTimeString("ru", {
@@ -186,6 +190,96 @@ export default function PreviewApp() {
       e.preventDefault()
       send()
     }
+  }
+
+  const speechSupported =
+    typeof window !== "undefined" &&
+    ((window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition)
+
+  function stopRecording() {
+    if (recognitionRef.current && isRecording) {
+      recognitionRef.current.stop()
+    }
+  }
+
+  function startRecording() {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) return
+    const rec = new SpeechRecognition()
+    rec.lang = "ru-RU"
+    rec.continuous = false
+    rec.interimResults = true
+
+    rec.onstart = () => {
+      setIsRecording(true)
+      voiceFinalRef.current = ""
+      setInput("")
+    }
+
+    rec.onend = () => {
+      setIsRecording(false)
+      if (voiceFinalRef.current) {
+        setInput(voiceFinalRef.current)
+      }
+    }
+
+    rec.onerror = (e: any) => {
+      console.error("Speech recognition error", e)
+      setIsRecording(false)
+      const err = e.error || "unknown"
+      if (err === "aborted") return
+      let detail = err
+      if (err === "not-allowed") {
+        detail =
+          "нет разрешения на микрофон. Разрешите доступ к микрофону в адресной строке браузера и попробуйте снова"
+      }
+      if (err === "no-speech") detail = "речь не распознана"
+      if (err === "network") {
+        detail =
+          "нет связи с сервером распознавания речи. Проверьте подключение и доступность Google-сервисов в вашем регионе"
+      }
+      if (err === "service-not-allowed") {
+        detail = "сервис распознавания речи недоступен в этом браузере/регионе"
+      }
+      const time = new Date().toLocaleTimeString("ru", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+      setMessages((m) => [
+        ...m,
+        {
+          role: "assistant",
+          text: `Ошибка голосового ввода: ${detail}`,
+          time,
+        },
+      ])
+    }
+
+    rec.onresult = (e: any) => {
+      let interim = ""
+      let final = ""
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const transcript = e.results[i][0].transcript
+        if (e.results[i].isFinal) {
+          final += transcript
+        } else {
+          interim += transcript
+        }
+      }
+      voiceFinalRef.current += final
+      setInput(voiceFinalRef.current + interim)
+    }
+
+    recognitionRef.current = rec
+    rec.start()
+  }
+
+  function toggleRecording() {
+    if (isRecording) stopRecording()
+    else startRecording()
   }
 
   return (
@@ -530,6 +624,23 @@ export default function PreviewApp() {
             >
               →
             </button>
+            {speechSupported && (
+              <button
+                onClick={toggleRecording}
+                title={isRecording ? "Остановить запись" : "Голосовой ввод"}
+                style={{
+                  background: isRecording ? "#e05555" : C.s2,
+                  border: `1px solid ${isRecording ? "#e05555" : C.b2}`,
+                  borderRadius: 2,
+                  padding: "4px 9px",
+                  fontSize: 10,
+                  color: isRecording ? "#fff" : C.t2,
+                  cursor: "pointer",
+                }}
+              >
+                {isRecording ? "⏹" : "🎤"}
+              </button>
+            )}
           </div>
         </div>
       </div>

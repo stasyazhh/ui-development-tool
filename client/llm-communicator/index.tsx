@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from "react"
 import { C } from "@/theme"
 import type { Msg } from "@/types"
+import type { PlacedComp } from "../ui-kit/constants"
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api"
 
@@ -57,22 +58,30 @@ export default function LLMPanel({
   projectId,
   messages,
   setMessages,
+  currentState,
+  onApplyState,
 }: {
   projectId: number | null
   messages: Msg[]
   setMessages: React.Dispatch<React.SetStateAction<Msg[]>>
+  currentState?: PlacedComp[]
+  onApplyState?: (state: PlacedComp[]) => void
 }) {
   const [input, setInput] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isRecording, setIsRecording] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const sessionId = useRef<string>(`session-${Date.now()}`)
+  const recognitionRef = useRef<any>(null)
+  const voiceFinalRef = useRef("")
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
   async function send() {
+    if (isRecording) stopRecording()
     const text = input.trim()
     if (!text || busy) return
     const time = new Date().toLocaleTimeString("ru", {
@@ -99,12 +108,14 @@ export default function LLMPanel({
         content: m.text,
       }))
 
-      const response = await fetch(`${API_BASE}/chat`, {
+      const response = await fetch(`${API_BASE}/ui/apply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          request: text,
+          current_state: currentState ?? [],
+          selected_ids: [],
           messages: apiMessages,
-          session_id: sessionId.current,
         }),
       })
 
@@ -113,29 +124,9 @@ export default function LLMPanel({
         throw new Error(body.detail || `Ошибка ${response.status}`)
       }
 
-      const reader = response.body?.getReader()
-      if (!reader) throw new Error("Нет ответа от сервера")
-
-      let reply = ""
-      const decoder = new TextDecoder()
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const chunk = decoder.decode(value, { stream: true })
-        const lines = chunk.split("\n")
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue
-          const data = line.slice(6)
-          if (data === "[DONE]") continue
-          try {
-            const parsed = JSON.parse(data)
-            if (parsed.error) throw new Error(parsed.error)
-            if (parsed.content) reply += parsed.content
-          } catch {
-            // ignore malformed lines
-          }
-        }
-      }
+      const result = await response.json()
+      const reply = result.reply || "Готово"
+      const state = result.state as PlacedComp[] | undefined
 
       setMessages((m) => {
         const next = [...m]
@@ -146,6 +137,10 @@ export default function LLMPanel({
         }
         return next
       })
+
+      if (state && state.length > 0 && onApplyState) {
+        onApplyState(state)
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Ошибка сети"
       setError(msg)
@@ -168,6 +163,96 @@ export default function LLMPanel({
       e.preventDefault()
       send()
     }
+  }
+
+  const speechSupported =
+    typeof window !== "undefined" &&
+    ((window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition)
+
+  function stopRecording() {
+    if (recognitionRef.current && isRecording) {
+      recognitionRef.current.stop()
+    }
+  }
+
+  function startRecording() {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) return
+    const rec = new SpeechRecognition()
+    rec.lang = "ru-RU"
+    rec.continuous = false
+    rec.interimResults = true
+
+    rec.onstart = () => {
+      setIsRecording(true)
+      voiceFinalRef.current = ""
+      setInput("")
+    }
+
+    rec.onend = () => {
+      setIsRecording(false)
+      if (voiceFinalRef.current) {
+        setInput(voiceFinalRef.current)
+      }
+    }
+
+    rec.onerror = (e: any) => {
+      console.error("Speech recognition error", e)
+      setIsRecording(false)
+      const err = e.error || "unknown"
+      if (err === "aborted") return
+      let detail = err
+      if (err === "not-allowed") {
+        detail =
+          "нет разрешения на микрофон. Разрешите доступ к микрофону в адресной строке браузера и попробуйте снова"
+      }
+      if (err === "no-speech") detail = "речь не распознана"
+      if (err === "network") {
+        detail =
+          "нет связи с сервером распознавания речи. Проверьте подключение и доступность Google-сервисов в вашем регионе"
+      }
+      if (err === "service-not-allowed") {
+        detail = "сервис распознавания речи недоступен в этом браузере/регионе"
+      }
+      const time = new Date().toLocaleTimeString("ru", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+      setMessages((m) => [
+        ...m,
+        {
+          role: "assistant",
+          text: `Ошибка голосового ввода: ${detail}`,
+          time,
+        },
+      ])
+    }
+
+    rec.onresult = (e: any) => {
+      let interim = ""
+      let final = ""
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const transcript = e.results[i][0].transcript
+        if (e.results[i].isFinal) {
+          final += transcript
+        } else {
+          interim += transcript
+        }
+      }
+      voiceFinalRef.current += final
+      setInput(voiceFinalRef.current + interim)
+    }
+
+    recognitionRef.current = rec
+    rec.start()
+  }
+
+  function toggleRecording() {
+    if (isRecording) stopRecording()
+    else startRecording()
   }
 
   return (
@@ -339,24 +424,43 @@ export default function LLMPanel({
           <span style={{ fontSize: 10, fontFamily: C.mono, color: C.t3 }}>
             Shift+Enter — новая строка
           </span>
-          <button
-            onClick={send}
-            disabled={busy}
-            style={{
-              background: C.acc,
-              border: "none",
-              borderRadius: 2,
-              padding: "5px 14px",
-              fontSize: 12,
-              fontFamily: C.sans,
-              color: "#fff",
-              fontWeight: 500,
-              cursor: busy ? "not-allowed" : "pointer",
-              opacity: busy ? 0.6 : 1,
-            }}
-          >
-            Отправить ↵
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {speechSupported && (
+              <button
+                onClick={toggleRecording}
+                title={isRecording ? "Остановить запись" : "Голосовой ввод"}
+                style={{
+                  background: isRecording ? "#e05555" : "transparent",
+                  border: `1px solid ${isRecording ? "#e05555" : C.b2}`,
+                  borderRadius: 2,
+                  padding: "4px 10px",
+                  fontSize: 12,
+                  color: isRecording ? "#fff" : C.t2,
+                  cursor: "pointer",
+                }}
+              >
+                {isRecording ? "⏹" : "🎤"}
+              </button>
+            )}
+            <button
+              onClick={send}
+              disabled={busy}
+              style={{
+                background: C.acc,
+                border: "none",
+                borderRadius: 2,
+                padding: "5px 14px",
+                fontSize: 12,
+                fontFamily: C.sans,
+                color: "#fff",
+                fontWeight: 500,
+                cursor: busy ? "not-allowed" : "pointer",
+                opacity: busy ? 0.6 : 1,
+              }}
+            >
+              Отправить ↵
+            </button>
+          </div>
         </div>
       </div>
     </div>

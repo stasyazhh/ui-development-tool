@@ -124,10 +124,12 @@ export default function VisualConstructor({
   projectId,
   restoredState,
   onSave,
+  onStateChange,
 }: {
   projectId: number | null
   restoredState?: PlacedComp[] | null
   onSave?: () => void
+  onStateChange?: (state: PlacedComp[]) => void
 }) {
   const [paletteSel, setPaletteSel] = useState<string | null>(null)
   const [placed, setPlaced] = useState<PlacedComp[]>([])
@@ -180,6 +182,10 @@ export default function VisualConstructor({
     }, 800)
     return () => clearTimeout(timeout)
   }, [placed, projectId])
+
+  useEffect(() => {
+    onStateChange?.(placed)
+  }, [placed])
 
   function updateProp<K extends keyof PlacedComp>(
     id: string,
