@@ -120,6 +120,77 @@ export default function CompPreview({
           </span>
         </div>
       )
+    case "Header":
+      return (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            background: bg,
+            borderBottom: `1px solid ${color}33`,
+            borderRadius: `${radius}px ${radius}px 0 0`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0 14px",
+          }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 600, color, fontFamily: C.sans }}>
+            {text}
+          </span>
+          <span style={{ fontSize: 14, color }}>⋯</span>
+        </div>
+      )
+    case "Footer":
+      return (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            background: bg,
+            borderTop: `1px solid ${color}33`,
+            borderRadius: `0 0 ${radius}px ${radius}px`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-around",
+            padding: "0 10px",
+          }}
+        >
+          {["◆", "◈", "◉", "◇"].map((icon, i) => (
+            <span key={i} style={{ fontSize: 14, color }}>
+              {icon}
+            </span>
+          ))}
+        </div>
+      )
+    case "Grid":
+      return (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            background: bg,
+            border: `1px dashed ${color}`,
+            borderRadius: radius,
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gridTemplateRows: "1fr 1fr",
+            gap: 6,
+            padding: 8,
+          }}
+        >
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              style={{
+                background: color,
+                borderRadius: Math.max(0, radius - 1),
+                opacity: 0.2,
+              }}
+            />
+          ))}
+        </div>
+      )
     case "TextField":
       return (
         <div
@@ -137,6 +208,30 @@ export default function CompPreview({
           <span style={{ fontSize: 11, color, fontFamily: C.sans }}>
             {text}
           </span>
+        </div>
+      )
+    case "TextArea":
+      return (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            background: bg,
+            border: `1px solid ${color}`,
+            borderRadius: radius,
+            display: "flex",
+            flexDirection: "column",
+            padding: "8px 10px",
+            gap: 4,
+          }}
+        >
+          <span style={{ fontSize: 11, color, fontFamily: C.sans }}>
+            {text}
+          </span>
+          <div style={{ marginTop: "auto", display: "flex", gap: 4 }}>
+            <div style={{ flex: 1, height: 3, background: color, opacity: 0.2, borderRadius: 2 }} />
+            <div style={{ width: 20, height: 3, background: color, opacity: 0.2, borderRadius: 2 }} />
+          </div>
         </div>
       )
     case "Select":
@@ -261,6 +356,62 @@ export default function CompPreview({
           >
             {text}
           </span>
+        </div>
+      )
+    case "Checkbox":
+      return (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "0 10px",
+          }}
+        >
+          <div
+            style={{
+              width: 16,
+              height: 16,
+              background: color,
+              borderRadius: Math.min(radius, 4),
+              display: "grid",
+              placeItems: "center",
+              fontSize: 10,
+              color: bg,
+            }}
+          >
+            ✓
+          </div>
+          <span style={{ fontSize: 11, color, fontFamily: C.sans }}>{text}</span>
+        </div>
+      )
+    case "Radio":
+      return (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "0 10px",
+          }}
+        >
+          <div
+            style={{
+              width: 16,
+              height: 16,
+              border: `2px solid ${color}`,
+              borderRadius: "50%",
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            <div style={{ width: 8, height: 8, borderRadius: "50%", background: color }} />
+          </div>
+          <span style={{ fontSize: 11, color, fontFamily: C.sans }}>{text}</span>
         </div>
       )
     case "Text":
@@ -421,6 +572,83 @@ export default function CompPreview({
           />
         </div>
       )
+    case "Image":
+      return (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            background: bg,
+            border: `1px dashed ${color}55`,
+            borderRadius: radius,
+            display: "grid",
+            placeItems: "center",
+            fontSize: 28,
+            color,
+          }}
+        >
+          {text || "🖼"}
+        </div>
+      )
+    case "Icon":
+      return (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            background: bg,
+            borderRadius: radius,
+            display: "grid",
+            placeItems: "center",
+            fontSize: 20,
+            color,
+          }}
+        >
+          {text || "★"}
+        </div>
+      )
+    case "Alert":
+      return (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            background: bg,
+            border: `1px solid ${color}55`,
+            borderRadius: radius,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "0 12px",
+          }}
+        >
+          <span style={{ fontSize: 14, color }}>▲</span>
+          <span style={{ fontSize: 11, color, fontFamily: C.sans }}>{text}</span>
+        </div>
+      )
+    case "List":
+      return (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            background: bg,
+            border: `1px solid ${color}33`,
+            borderRadius: radius,
+            display: "flex",
+            flexDirection: "column",
+            padding: "8px 10px",
+            gap: 6,
+          }}
+        >
+          {[0, 1, 2].map((i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: color }} />
+              <div style={{ flex: 1, height: 6, background: color, opacity: 0.2, borderRadius: 2 }} />
+            </div>
+          ))}
+        </div>
+      )
     case "Bubble":
       return (
         <div
@@ -555,6 +783,55 @@ export default function CompPreview({
           >
             →
           </div>
+        </div>
+      )
+    case "Modal":
+      return (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            background: bg,
+            border: `1px solid ${color}33`,
+            borderRadius: radius,
+            display: "flex",
+            flexDirection: "column",
+            padding: 12,
+            gap: 8,
+            boxShadow: "0 8px 32px rgba(0,0,0,.5)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color, fontFamily: C.sans }}>{text}</span>
+            <span style={{ fontSize: 12, color }}>✕</span>
+          </div>
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6, justifyContent: "center" }}>
+            <div style={{ height: 8, background: color, opacity: 0.15, borderRadius: 2 }} />
+            <div style={{ height: 8, background: color, opacity: 0.15, borderRadius: 2, width: "80%" }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
+            <div style={{ width: 60, height: 22, background: color, opacity: 0.25, borderRadius: 2 }} />
+            <div style={{ width: 60, height: 22, background: color, borderRadius: 2 }} />
+          </div>
+        </div>
+      )
+    case "Snackbar":
+      return (
+        <div
+          style={{
+            width: "100%",
+            height: "100%",
+            background: bg,
+            borderRadius: radius,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0 12px",
+            boxShadow: "0 4px 16px rgba(0,0,0,.4)",
+          }}
+        >
+          <span style={{ fontSize: 11, color, fontFamily: C.sans }}>{text}</span>
+          <span style={{ fontSize: 11, color, fontWeight: 600 }}>OK</span>
         </div>
       )
     default:

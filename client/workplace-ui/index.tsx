@@ -29,6 +29,7 @@ export default function WorkplaceUI() {
   const [changesLoading, setChangesLoading] = useState(false)
   const [restoredState, setRestoredState] = useState<PlacedComp[] | null>(null)
   const [placedState, setPlacedState] = useState<PlacedComp[]>([])
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [msgs, setMsgs] = useState<Msg[]>(initMessages)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -163,6 +164,7 @@ export default function WorkplaceUI() {
               projectId={activeProjectId}
               restoredState={restoredState}
               onStateChange={setPlacedState}
+              onSelectionChange={setSelectedIds}
               onSave={async () => {
                 if (activeProjectId === null) return
                 setChangesLoading(true)
@@ -211,6 +213,7 @@ export default function WorkplaceUI() {
           setMessages={setMsgs}
           currentState={placedState}
           onApplyState={handleApplyState}
+          selectedIds={selectedIds}
         />
       )}
     </div>

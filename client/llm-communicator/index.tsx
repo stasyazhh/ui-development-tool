@@ -6,7 +6,7 @@ import type { PlacedComp } from "../ui-kit/constants"
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api"
 
 function renderText(text: string) {
-  const tokens: Array<{ type: "text" | "bold" | "code" content: string }> = []
+  const tokens: Array<{ type: "text" | "bold" | "code"; content: string }> = []
   const regex = /\*\*(.+?)\*\*|`([^`]+)`/g
   let lastIndex = 0
   let match: RegExpExecArray | null
@@ -54,18 +54,27 @@ function renderText(text: string) {
   })
 }
 
+const SUGGESTIONS = [
+  "Измени цвет сообщений ассистента на синий",
+  "Сделай кнопки отправки зелеными и круглыми",
+  "Поменяй фон чата на темно-серый",
+  "Увеличь радиус пузырей сообщений",
+]
+
 export default function LLMPanel({
   projectId,
   messages,
   setMessages,
   currentState,
   onApplyState,
+  selectedIds = [],
 }: {
   projectId: number | null
   messages: Msg[]
   setMessages: React.Dispatch<React.SetStateAction<Msg[]>>
   currentState?: PlacedComp[]
   onApplyState?: (state: PlacedComp[]) => void
+  selectedIds?: string[]
 }) {
   const [input, setInput] = useState("")
   const [busy, setBusy] = useState(false)
@@ -114,7 +123,7 @@ export default function LLMPanel({
         body: JSON.stringify({
           request: text,
           current_state: currentState ?? [],
-          selected_ids: [],
+          selected_ids: selectedIds,
           messages: apiMessages,
         }),
       })
@@ -309,6 +318,62 @@ export default function LLMPanel({
         </div>
       )}
 
+      {messages.length <= 2 && !busy && (
+        <div
+          style={{
+            padding: "10px 14px 0",
+            borderBottom: `1px solid ${C.b1}`,
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              fontFamily: C.mono,
+              color: C.t2,
+              marginBottom: 6,
+              letterSpacing: "0.05em",
+            }}
+          >
+            ПОПРОБУЙТЕ ЗАПРОС
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                onClick={() => !busy && setInput(s)}
+                style={{
+                  background: C.s2,
+                  border: `1px solid ${C.b2}`,
+                  borderRadius: 2,
+                  padding: "4px 8px",
+                  fontSize: 10.5,
+                  fontFamily: C.sans,
+                  color: C.t1,
+                  cursor: busy ? "not-allowed" : "pointer",
+                  textAlign: "left",
+                }}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          <div
+            style={{
+              marginTop: 8,
+              paddingBottom: 10,
+              fontSize: 10,
+              fontFamily: C.sans,
+              color: C.t3,
+              lineHeight: 1.5,
+            }}
+          >
+            Выделите компоненты на канвасе, чтобы ассистент применял изменения
+            только к ним.
+          </div>
+        </div>
+      )}
+
       <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
         {messages.map((m, i) => (
           <div
@@ -398,7 +463,7 @@ export default function LLMPanel({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKey}
-          placeholder="Поставьте задачу... (Enter для отправки)"
+          placeholder="Например: измени цвет сообщений ассистента на синий"
           rows={3}
           disabled={busy}
           style={{

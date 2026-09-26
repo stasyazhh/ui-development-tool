@@ -98,6 +98,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     messages: list[ChatMessage]
     session_id: Optional[str] = None
+    current_state: Any = None
 
 
 class UIApplyRequest(BaseModel):
@@ -108,10 +109,10 @@ class UIApplyRequest(BaseModel):
 
 
 UI_COMPONENT_TYPES = [
-    "Container", "Row", "Column", "Divider", "Spacer",
-    "TextField", "Select", "Toggle", "Slider", "Button",
-    "Text", "Avatar", "Badge", "Progress", "Card",
-    "Bubble", "Typing", "QuickReply", "Prompt",
+    "Container", "Row", "Column", "Divider", "Spacer", "Header", "Footer", "Grid",
+    "TextField", "TextArea", "Select", "Toggle", "Slider", "Button", "Checkbox", "Radio",
+    "Text", "Avatar", "Badge", "Progress", "Card", "Image", "Icon", "Alert", "List",
+    "Bubble", "Typing", "QuickReply", "Prompt", "Modal", "Snackbar",
 ]
 
 UI_SYSTEM_PROMPT = """Ты — ассистент визуального UI-конструктора. Пользователь редактирует мобильный интерфейс на темном фоне.
@@ -132,12 +133,16 @@ UI_SYSTEM_PROMPT = """Ты — ассистент визуального UI-ко
 Правила:
 - action всегда "replace" — возвращаешь полное новое состояние интерфейса.
 - Если запрос не касается изменения интерфейса, верни action: "none" и пустой state: [].
-- Доступные type: Container, Row, Column, Divider, Spacer, TextField, Select, Toggle, Slider, Button, Text, Avatar, Badge, Progress, Card, Bubble, Typing, QuickReply, Prompt.
+- Доступные type: Container, Row, Column, Divider, Spacer, Header, Footer, Grid, TextField, TextArea, Select, Toggle, Slider, Button, Checkbox, Radio, Text, Avatar, Badge, Progress, Card, Image, Icon, Alert, List, Bubble, Typing, QuickReply, Prompt, Modal, Snackbar.
 - Координаты: канвас 2000x1600. Основная область (артборд) начинается в (160, 80) и имеет размер 390x720. Размещай компоненты внутри артборда, x и y — левый верхний угол.
 - w и h — ширина и высота. color — цвет текста/иконки. bg — цвет фона. radius — радиус скругления. text — текст на компоненте.
 - id должен быть уникальным, используй формат "<Type>-<номер>". Сохраняй id существующих компонентов, если они не удаляются.
 - Если selected_ids не пусто, пользователь обращается к выбранным компонентам. Запросы вроде "перекрась выбранные", "удали их", "измени их" или просто "перекрась в красный" при наличии selected_ids должны применяться именно к этим компонентам.
 - Компоненты, перечисленные в selected_ids, должны присутствовать в возвращаемом state, если пользователь не просил их удалить. Если просил удалить — исключи их из state.
+- Пользователи имеют полный доступ к адаптации интерфейсов ассистентов. Запросы вроде "измени цвет сообщений", "сделай сообщения ассистента синими", "увеличь радиус пузырей", "поменяй фон чата", "сделай кнопки круглыми", "измени цвет текста" — все они являются корректными UI-запросами. Применяй их ко всем подходящим компонентам в current_state: для сообщений ассистента — компоненты Bubble, для сообщений пользователя — Button, для ввода/поля ввода — Prompt/TextField, для фона — Container/Card/Row/Column.
+- При изменении цвета сообщений сохраняй компоненты на тех же позициях и с теми же размерами; меняй только bg, color, radius, text или другие визуальные свойства по запросу.
+- Если запрос расплывчатый ("перекрась в красный", "сделай ярче"), применяй изменение к выбранным компонентам, а если выделенных нет — ко всем компонентам, для которых запрос имеет смысл.
+- Никогда не отвечай, что у тебя нет доступа к изменению интерфейса. У тебя есть полный доступ: ты можешь менять цвета, фоны, скругления, размеры, текст и расположение компонентов. Всегда выполняй такие запросы и возвращай обновлённое состояние в state.
 - Отвечай только JSON, без markdown-разметки вне JSON."""
 
 
@@ -484,6 +489,52 @@ async def apply_ui(payload: UIApplyRequest, request: Request):
     return await _apply_ui(payload, session_id, api_key)
 
 
+@app.post("/api/preview/{project_id}/chat")
+async def preview_chat(project_id: int, payload: ChatRequest, request: Request):
+    """Chat endpoint used by the runtime preview.
+
+    It reuses the UI assistant so users can ask the running assistant to adapt
+    its own interface. When a UI change is returned it is persisted and the
+    caller can reload the preview to see the result.
+    """
+    project = manager.get_project_by_id(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Проект не найден")
+
+    ui_state = manager.get_project_ui_state(project_id) or []
+    api_key = request.headers.get("x-api-key") or AI_API_KEY
+    session_id = payload.session_id or str(uuid.uuid4())
+
+    request_text = ""
+    if payload.messages:
+        for m in reversed(payload.messages):
+            if m.role == "user":
+                request_text = m.content
+                break
+
+    apply_payload = UIApplyRequest(
+        request=request_text,
+        current_state=payload.current_state if payload.current_state is not None else ui_state,
+        selected_ids=[],
+        messages=[*payload.messages],
+    )
+
+    result = await _apply_ui(apply_payload, session_id, api_key)
+    state = result.get("state")
+    state_changed = bool(state)
+
+    if state_changed:
+        try:
+            manager.update_project_ui_state(project_id, state)
+            manager.record_ui_change(project_id, "", state)
+        except Exception as e:
+            raise HTTPException(
+                status_code=500, detail=f"Не удалось сохранить изменения интерфейса: {e}"
+            )
+
+    return {"reply": result.get("reply", "Готово"), "state_changed": state_changed}
+
+
 AB_X = 160
 AB_Y = 80
 AB_W = 390
@@ -650,6 +701,9 @@ def preview_project(project_id: int):
         if c.get("type") not in dialog_types and c.get("id") not in chat_input_ids
     ]
 
+    # Persisted preview state so the assistant can adapt the UI during testing.
+    preview_ui_state_json = json.dumps(ui_state, ensure_ascii=False)
+
     header_bottom, footer_top = _find_content_bounds(ui_state)
     messages_top = max(0, header_bottom)
     messages_bottom = max(56, AB_H - footer_top)
@@ -699,6 +753,8 @@ def preview_project(project_id: int):
   </div>
   <script>
     const sessionId = "preview-" + Math.random().toString(36).slice(2);
+    const projectId = "{project_id}";
+    const initialUiState = {preview_ui_state_json};
     const messages = [];
     const container = document.getElementById("messages-layer");
     const input = document.getElementById("chat-input");
@@ -735,36 +791,23 @@ def preview_project(project_id: int):
       const assistantEl = addMessage("Обрабатываю запрос...", "assistant");
 
       try {{
-        const res = await fetch("/api/chat", {{
+        const res = await fetch(`/api/preview/${{projectId}}/chat`, {{
           method: "POST",
           headers: {{"Content-Type":"application/json"}},
-          body: JSON.stringify({{messages: messages, session_id: sessionId}})
+          body: JSON.stringify({{messages: messages, session_id: sessionId, current_state: initialUiState}})
         }});
         if (!res.ok) throw new Error("Ошибка сети " + res.status);
-        if (!res.body) throw new Error("Пустое тело ответа");
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let reply = "";
-        while (true) {{
-          const {{done, value}} = await reader.read();
-          if (done) break;
-          const lines = decoder.decode(value, {{stream:true}}).split("\\n");
-          for (const line of lines) {{
-            if (!line.startsWith("data: ")) continue;
-            const data = line.slice(6);
-            if (data === "[DONE]") continue;
-            try {{
-              const parsed = JSON.parse(data);
-              if (parsed.error) throw new Error(parsed.error);
-              if (parsed.content) {{
-                reply += parsed.content;
-                assistantEl.innerHTML = formatMarkdown(reply);
-                container.scrollTop = container.scrollHeight;
-              }}
-            }} catch {{}}
-          }}
-        }}
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        const reply = data.reply || "";
+        assistantEl.innerHTML = formatMarkdown(reply);
+        container.scrollTop = container.scrollHeight;
         messages.push({{role:"assistant", content: reply}});
+        if (data.state_changed) {{
+          addMessage("Интерфейс обновлён. Перезагрузка...", "system");
+          setTimeout(() => window.location.reload(), 1200);
+          return;
+        }}
       }} catch (e) {{
         const msg = e && e.message ? e.message : String(e);
         console.error("sendMessage failed", e);
@@ -879,7 +922,7 @@ def preview_project(project_id: int):
       addMessage("JS ошибка: " + (e.message || "unknown"), "system");
     }});
 
-    addMessage("Ассистент готов к диалогу", "system");
+    addMessage("Ассистент готов к диалогу.", "system");
     if (input) input.focus();
   </script>
 </body>
