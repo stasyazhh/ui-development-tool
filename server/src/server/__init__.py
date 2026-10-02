@@ -1,2 +1,11 @@
+"""Server package entry point."""
+from server.main import app
+
+
 def main() -> None:
-    print("Hello from server!")
+    import uvicorn
+
+    uvicorn.run("server.main:app", host="0.0.0.0", port=8000)
+
+
+__all__ = ["app", "main"]

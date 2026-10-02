@@ -51,7 +51,8 @@ export default function WorkplaceUI() {
       showToast({ text: "Выберите проект для запуска", kind: "warn" })
       return
     }
-    window.open(`http://localhost:8000/preview/${activeProjectId}`, "_blank")
+    const previewBase = import.meta.env.VITE_PREVIEW_BASE_URL || "http://localhost:8000"
+    window.open(`${previewBase}/preview/${activeProjectId}`, "_blank")
   }
 
   async function handleApplyState(state: PlacedComp[]) {

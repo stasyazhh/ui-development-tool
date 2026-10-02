@@ -1,7 +1,7 @@
 [project]
 name = "server"
 version = "0.1.0"
-description = "Add your description here"
+description = "Backend server for the UI development tool"
 readme = "README.md"
 authors = [
     { name = "stasyazhh", email = "stasyazhhl@gmail.com" }
