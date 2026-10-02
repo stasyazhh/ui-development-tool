@@ -23,6 +23,10 @@ export default function Sidebar({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hoveredId, setHoveredId] = useState<number | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [createName, setCreateName] = useState("")
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editingName, setEditingName] = useState("")
 
   const loadProjects = useCallback(async () => {
     setLoading(true)
@@ -56,34 +60,67 @@ export default function Sidebar({
       })
   }, [activeProjectId])
 
-  async function handleCreateProject() {
-    const name = prompt("Название проекта:")
-    if (!name?.trim()) return
+  function startCreate() {
+    setEditingId(null)
+    setEditingName("")
+    setCreating(true)
+    setCreateName("")
+  }
+
+  function cancelCreate() {
+    setCreating(false)
+    setCreateName("")
+  }
+
+  async function submitCreate() {
+    const name = createName.trim()
+    if (!name) {
+      cancelCreate()
+      return
+    }
     try {
-      const project = await projectsApi.create(name.trim())
+      const project = await projectsApi.create(name)
       setProjects((prev) => [project, ...prev])
       setActiveProjectId(project.id)
       onProjectChange?.(project.id)
+      setCreating(false)
+      setCreateName("")
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка создания проекта")
     }
   }
 
-  async function handleRenameProject(project: ApiProject) {
-    const name = prompt("Новое название проекта:", project.name)
-    if (!name?.trim() || name.trim() === project.name) return
+  function startEdit(project: ApiProject) {
+    setCreating(false)
+    setCreateName("")
+    setEditingId(project.id)
+    setEditingName(project.name)
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setEditingName("")
+  }
+
+  async function submitEdit(projectId: number) {
+    const name = editingName.trim()
+    if (!name) {
+      cancelEdit()
+      return
+    }
     try {
-      const updated = await projectsApi.update(project.id, name.trim())
+      const updated = await projectsApi.update(projectId, name)
       setProjects((prev) =>
         prev.map((p) => (p.id === updated.id ? updated : p)),
       )
+      setEditingId(null)
+      setEditingName("")
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка переименования проекта")
     }
   }
 
   async function handleDeleteProject(project: ApiProject) {
-    if (!confirm(`Удалить проект «${project.name}»?`)) return
     try {
       await projectsApi.remove(project.id)
       setProjects((prev) => {
@@ -97,6 +134,22 @@ export default function Sidebar({
       })
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка удаления проекта")
+    }
+  }
+
+  function onInputKeyDown(
+    e: React.KeyboardEvent,
+    action: "create" | "edit",
+    projectId?: number,
+  ) {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      if (action === "create") submitCreate()
+      else if (projectId !== undefined) submitEdit(projectId)
+    } else if (e.key === "Escape") {
+      e.preventDefault()
+      if (action === "create") cancelCreate()
+      else cancelEdit()
     }
   }
 
@@ -133,7 +186,7 @@ export default function Sidebar({
           ПРОЕКТЫ
         </span>
         <button
-          onClick={handleCreateProject}
+          onClick={startCreate}
           style={{
             background: "none",
             border: "none",
@@ -163,9 +216,44 @@ export default function Sidebar({
       )}
 
       <div style={{ flex: 1, overflowY: "auto", paddingBottom: 8 }}>
+        {creating && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              width: "100%",
+              background: C.accA,
+              borderLeft: `2px solid ${C.acc}`,
+              padding: "4px 6px 4px 14px",
+            }}
+          >
+            <input
+              autoFocus
+              value={createName}
+              onChange={(e) => setCreateName(e.target.value)}
+              onKeyDown={(e) => onInputKeyDown(e, "create")}
+              onBlur={submitCreate}
+              placeholder="Название проекта"
+              style={{
+                flex: 1,
+                background: "transparent",
+                border: "none",
+                outline: "none",
+                padding: "2px 0",
+                fontSize: 12,
+                fontWeight: 600,
+                color: C.t1,
+                fontFamily: C.sans,
+              }}
+            />
+          </div>
+        )}
+
         {projects.map((project) => {
           const isActive = activeProjectId === project.id
-          const showActions = isActive || hoveredId === project.id
+          const isEditing = editingId === project.id
+          const showActions = !isEditing && (isActive || hoveredId === project.id)
 
           return (
             <div
@@ -184,32 +272,53 @@ export default function Sidebar({
                 padding: "4px 6px 4px 14px",
               }}
             >
-              <button
-                onClick={() => {
-                  setActiveProjectId(project.id)
-                  onProjectChange?.(project.id)
-                }}
-                title={project.name}
-                style={{
-                  flex: 1,
-                  display: "flex",
-                  alignItems: "center",
-                  background: "none",
-                  border: "none",
-                  padding: "2px 0",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: isActive ? C.t1 : C.t2,
-                  fontFamily: C.sans,
-                  textAlign: "left",
-                  cursor: "pointer",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {project.name}
-              </button>
+              {isEditing ? (
+                <input
+                  autoFocus
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  onKeyDown={(e) => onInputKeyDown(e, "edit", project.id)}
+                  onBlur={() => submitEdit(project.id)}
+                  style={{
+                    flex: 1,
+                    background: "transparent",
+                    border: "none",
+                    outline: "none",
+                    padding: "2px 0",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: C.t1,
+                    fontFamily: C.sans,
+                  }}
+                />
+              ) : (
+                <button
+                  onClick={() => {
+                    setActiveProjectId(project.id)
+                    onProjectChange?.(project.id)
+                  }}
+                  title={project.name}
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    background: "none",
+                    border: "none",
+                    padding: "2px 0",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: isActive ? C.t1 : C.t2,
+                    fontFamily: C.sans,
+                    textAlign: "left",
+                    cursor: "pointer",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {project.name}
+                </button>
+              )}
 
               {showActions && (
                 <div
@@ -223,7 +332,7 @@ export default function Sidebar({
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      handleRenameProject(project)
+                      startEdit(project)
                     }}
                     title="Переименовать"
                     style={{
