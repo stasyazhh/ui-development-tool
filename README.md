@@ -112,8 +112,8 @@ DB_NAME=ui_projects_db
 DB_USER=postgres
 DB_PASSWORD=password
 
-AI_BASE_URL=https://url
-AI_MODEL=your_model
+AI_BASE_URL=https://opencode.ai/zen/go/v1
+AI_MODEL=kimi-k2.7-code
 AI_API_KEY=your_api_key_here
 ```
 
@@ -124,8 +124,8 @@ AI_API_KEY=your_api_key_here
 | `DB_NAME` | Имя базы данных | `ui_projects_db` |
 | `DB_USER` | Пользователь БД | `postgres` |
 | `DB_PASSWORD` | Пароль пользователя БД | `password` |
-| `AI_BASE_URL` | Базовый URL API LLM | — |
-| `AI_MODEL` | Модель LLM | — |
+| `AI_BASE_URL` | Базовый URL API LLM | `https://opencode.ai/zen/go/v1` |
+| `AI_MODEL` | Модель LLM | `kimi-k2.7-code` |
 | `AI_API_KEY` | API-ключ для LLM | — |
 
 ---
@@ -158,42 +158,36 @@ AI_API_KEY=your_api_key_here
 
 ### Главный экран / рабочее пространство
 
-> **Место для скриншота:** общий вид приложения с открытым проектом.
+Общий вид приложения с открытым проектом, деревом файлов и панелью инструментов.
 
-![Главный экран](docs/screenshots/main-screen.png)
+![Главный экран](screenshots/main-screen.png)
 
 ### Панель проектов
 
-> **Место для скриншота:** боковая панель со списком проектов и деревом файлов.
+Боковая панель со списком проектов и древовидной структурой файлов.
 
-![Панель проектов](docs/screenshots/projects-panel.png)
+![Панель проектов](screenshots/projects-panel.png)
 
 ### Визуальный конструктор
 
-> **Место для скриншота:** холст с размещёнными компонентами и панелью свойств.
+Холст с размещёнными компонентами и панелью свойств для редактирования.
 
-![Конструктор](docs/screenshots/ui-builder.png)
+![Конструктор](screenshots/ui-builder.png)
 
 ### Диалог с AI-ассистентом
 
-> **Место для скриншота:** панель LLM-общения с запросом и ответом ассистента.
+Панель общения с ассистентом: запросы на естественном языке и ответы.
 
-![AI-ассистент](docs/screenshots/llm-chat.png)
+![AI-ассистент](screenshots/llm-chat.png)
 
 ### Превью проекта
 
-> **Место для скриншота:** интерактивный превью с диалогом.
+Интерактивный превью с диалогом, имитирующий работу готового приложения.
 
-![Превью](docs/screenshots/preview.png)
+![Превью](screenshots/preview.png)
 
 ### История изменений
 
-> **Место для скриншота:** панель с историей правок UI.
+Панель с историей правок UI, где можно отследить все внесённые изменения.
 
-![История изменений](docs/screenshots/changes-history.png)
-
----
-
-## Лицензия
-
-[LICENSE](LICENSE)
+![История изменений](screenshots/changes-history.png)
