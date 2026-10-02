@@ -112,8 +112,8 @@ DB_NAME=ui_projects_db
 DB_USER=postgres
 DB_PASSWORD=password
 
-AI_BASE_URL=https://opencode.ai/zen/go/v1
-AI_MODEL=kimi-k2.7-code
+AI_BASE_URL=https://url
+AI_MODEL=your_model
 AI_API_KEY=your_api_key_here
 ```
 
